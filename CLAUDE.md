@@ -75,6 +75,17 @@ never `username=`. Committee access is a Django group named by the
 `ERHVERVSUDVALG_GROUP` constant — check `user.is_business_committee`, don't
 query the group name inline.
 
+**Not every user is a resident.** Employees and third-party managers get a
+`User` with no `Resident` row, so never assume an address or resident number
+exists — check `user.is_resident` (or the nullable `resident` key in the API).
+Residency lives in `Resident`: `external_user_id` (the person's id in the
+association's other database, which is the source of truth), `resident_number`
+formatted `1-2345-6789-0` and regex-validated, plus the flat. The address is
+structured, not free text: `Building` holds street and house number — the
+association spans several blocks on more than one street — and `Resident` adds
+floor and door. Use `resident.address` for display rather than reassembling it,
+and `select_related("resident__building")` when listing users.
+
 **Feature apps are pre-wired placeholders.** `apps/bookings` and
 `apps/shoprentals` are in `INSTALLED_APPS` and mounted in `config/urls.py` with
 empty `urlpatterns`. Their `models.py` docstrings record the domain rules from

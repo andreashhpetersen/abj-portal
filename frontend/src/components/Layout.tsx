@@ -17,7 +17,12 @@ export function Layout() {
           {member?.is_business_committee && <NavLink to="/erhverv">Erhvervslejemål</NavLink>}
         </nav>
         <div className="app-header__user">
-          <span>{member?.email}</span>
+          {/* Non-residents have no address, so fall back to the email alone. */}
+          <span>
+            {member?.resident
+              ? `${member.email} · ${member.resident.address}`
+              : member?.email}
+          </span>
           <button type="button" onClick={() => void logout()}>
             Log ud
           </button>

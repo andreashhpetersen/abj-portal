@@ -21,7 +21,7 @@ def test_user_is_created_with_email_as_identifier(member):
     assert member.get_username() == "beboer@example.dk"
 
 
-def test_login_returns_the_member_and_starts_a_session(client, member):
+def test_login_returns_the_user_and_starts_a_session(client, member):
     response = client.post(
         reverse("accounts:login"),
         {"email": "beboer@example.dk", "password": "hemmeligt123"},
@@ -46,14 +46,14 @@ def test_me_requires_authentication(client, db):
     assert client.get(reverse("accounts:me")).status_code == 403
 
 
-def test_me_returns_the_logged_in_member(client, member):
+def test_me_returns_the_logged_in_user(client, member):
     client.force_login(member)
     response = client.get(reverse("accounts:me"))
     assert response.status_code == 200
     assert response.json()["email"] == "beboer@example.dk"
 
 
-def test_plain_member_is_not_on_the_business_committee(member):
+def test_plain_user_is_not_on_the_business_committee(member):
     assert member.is_business_committee is False
 
 

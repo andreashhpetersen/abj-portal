@@ -10,15 +10,37 @@ import type { ReactNode } from 'react'
 
 import { ApiError, api } from '../api/client'
 
+export interface Building {
+  id: number
+  street: string
+  house_number: string
+  name: string
+  /** Street and number on one line, e.g. "Sankt Knuds Vej 12". */
+  label: string
+}
+
+/** Residency details. Owned by the association's other database. */
+export interface Resident {
+  external_user_id: number
+  /** Format: 1-2345-6789-0. */
+  resident_number: string
+  building: Building
+  floor: string
+  door: string
+  /** Full address on one line, e.g. "Sankt Knuds Vej 12, 3. th". */
+  address: string
+}
+
 export interface Member {
   id: number
   email: string
   first_name: string
   last_name: string
   phone: string
-  apartment: string
   is_staff: boolean
   is_business_committee: boolean
+  /** Null for users who are not residents — employees, third-party managers. */
+  resident: Resident | null
 }
 
 interface AuthContextValue {

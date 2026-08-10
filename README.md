@@ -70,6 +70,19 @@ frontend/
   src/pages/         One component per route
 ```
 
+## Users and residents
+
+A login and a residency are separate things. `User` is anyone who can sign in;
+`Resident` records that the person lives here — their id in the association's
+other database, their resident number (`1-2345-6789-0`), and their flat.
+Employees and third-party managers get a `User` with no `Resident`, so any code
+touching an address must handle its absence.
+
+Addresses are structured: `Building` holds a street and house number (the
+association covers several blocks across more than one street) and `Resident`
+adds floor and door. Both are managed in the admin — create the buildings once,
+then residency is edited inline on each user.
+
 ## Access control
 
 * **Members** — anyone with an account. See the calendar.
