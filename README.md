@@ -99,6 +99,30 @@ A public event can repeat daily, weekly or monthly with an interval, up to an
 end date. Occurrences are created as ordinary bookings, so any single one can be
 moved or cancelled on its own.
 
+### API
+
+All of it requires a logged-in user.
+
+| Method            | Path                              | Who                |
+| ----------------- | --------------------------------- | ------------------ |
+| `GET`             | `/api/bookings/events/`           | anyone             |
+| `POST`            | `/api/bookings/events/`           | anyone             |
+| `GET`             | `/api/bookings/events/{id}/`      | anyone             |
+| `PATCH`/`PUT`     | `/api/bookings/events/{id}/`      | owner or admin     |
+| `DELETE`          | `/api/bookings/events/{id}/`      | admin              |
+| `POST`            | `/api/bookings/events/{id}/cancel/` | owner or admin   |
+| `POST`/`DELETE`   | `/api/bookings/events/{id}/attendance/` | anyone       |
+| `GET`/`POST`      | `/api/bookings/series/`           | anyone (delete: admin) |
+| `GET`             | `/api/bookings/settings/`         | anyone             |
+| `PATCH`           | `/api/bookings/settings/`         | admin              |
+
+The calendar takes `?from=YYYY-MM-DD&to=YYYY-MM-DD` (inclusive local dates,
+matching anything that overlaps the window), plus `?category=` and
+`?include_cancelled=true`. It is not paginated — the date window bounds it.
+
+Deleting is admin-only by design: everyone else cancels, which keeps the record
+of who had booked and why the slot came free.
+
 ## Access control
 
 * **Members** — anyone with an account. See the calendar.

@@ -3,6 +3,21 @@ from rest_framework import serializers
 from .models import Building, Resident, User
 
 
+class ContactSerializer(serializers.ModelSerializer):
+    """How to reach someone — what the calendar shows next to a booking.
+
+    Phone is included because the brief asks for it as an optional contact
+    detail; it is blank for anyone who has not supplied one.
+    """
+
+    name = serializers.CharField(source="get_full_name", read_only=True)
+
+    class Meta:
+        model = User
+        fields = ["id", "name", "email", "phone"]
+        read_only_fields = fields
+
+
 class BuildingSerializer(serializers.ModelSerializer):
     label = serializers.CharField(source="__str__", read_only=True)
 

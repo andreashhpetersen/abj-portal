@@ -115,12 +115,26 @@ in `occurrence_times()` runs on local wall-clock time and re-localises, so a
 only place that assumption lives — adding a second bookable space means adding
 the FK and including it in that filter.
 
+**Serializers must translate model validation.** Because `Event.save()` calls
+`full_clean()`, a rule violation reaching the database layer would surface as a
+500. `EventSerializer.validate()` builds the instance the write would produce,
+validates it, and re-raises Django's `ValidationError` as DRF's — that is what
+turns "the room is already booked" into a 400 against the `start` field. Any new
+booking serializer needs the same treatment; use `run_model_validation()`.
+
+**List filters apply only to the list action.** `EventViewSet.get_queryset()`
+returns early for detail routes. Filtering there once made cancelled bookings
+404 on their own URL, so they could not be inspected, reinstated or deleted.
+
+**The event list is unpaginated on purpose** — a month view bounded by
+`?from=`/`?to=` must not have bookings silently truncated by a page size.
+
 **`apps/shoprentals` is still a placeholder** in `INSTALLED_APPS` and
 `config/urls.py` with empty `urlpatterns`; its `models.py` docstring records the
 domain rules from the brief.
 
-**Bookings have no API yet** — models, admin and tests only. `apps/bookings/urls.py`
-is still empty.
+**The SPA has no booking UI yet** — the API is complete, the calendar page is
+still a placeholder.
 
 ## Open decisions
 
