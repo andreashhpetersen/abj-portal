@@ -92,6 +92,17 @@ empty `urlpatterns`. Their `models.py` docstrings record the domain rules from
 the brief (private-booking 2-week horizon and admin toggle, recurrence,
 attendance, application statuses) — read them before building either feature.
 
+## Open decisions
+
+Deliberately unresolved — don't quietly pick one while doing something else.
+
+- **How residents get into the system.** A sync command against the
+  association's other database, a one-off import, or manual admin entry. This
+  decides whether `Resident.external_user_id` and `resident_number` should be
+  read-only in the admin, whether a `synced_at` field is needed, and what
+  happens when someone moves out. Until it is settled, residency is edited by
+  hand in the admin and `external_user_id` is required.
+
 ## Conventions
 
 - Danish is the user-facing language: UI strings, API error messages, and admin
