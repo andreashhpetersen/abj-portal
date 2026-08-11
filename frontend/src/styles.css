@@ -143,3 +143,295 @@ button:disabled {
     align-items: flex-start;
   }
 }
+
+/* --- calendar ------------------------------------------------------------ */
+
+.calendar-page {
+  display: grid;
+  gap: var(--space);
+}
+
+/* Side by side once there is room; stacked on a phone. */
+@media (min-width: 56rem) {
+  .calendar-page {
+    grid-template-columns: 1fr 22rem;
+    align-items: start;
+  }
+}
+
+.calendar {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: var(--space);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.calendar__title {
+  font-size: 1.05rem;
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.calendar__nav {
+  background: transparent;
+  color: var(--color-text);
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 0.2rem 0.7rem;
+  border-radius: 6px;
+}
+
+.calendar__nav:hover {
+  background: var(--color-bg);
+}
+
+.calendar__weekdays,
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar__weekdays {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.calendar__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  /* Square-ish cells that shrink gracefully on a narrow screen. */
+  aspect-ratio: 1;
+  padding: 0.3rem 0.1rem;
+  background: var(--color-bg);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.calendar__day:hover {
+  border-color: #d8d6ce;
+}
+
+.calendar__day--outside {
+  color: #a9a79f;
+  background: transparent;
+}
+
+.calendar__day--today .calendar__date {
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.calendar__day--selected {
+  border-color: var(--color-accent);
+}
+
+.calendar__dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  min-height: 0.5rem;
+}
+
+.dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot--public {
+  background: var(--color-accent);
+}
+
+.dot--private {
+  background: #b07d3b;
+}
+
+.calendar__more {
+  font-size: 0.65rem;
+  color: var(--color-muted);
+}
+
+.calendar__legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.calendar__legend .dot:not(:first-child) {
+  margin-left: 0.75rem;
+}
+
+/* --- day panel ----------------------------------------------------------- */
+
+.day-panel__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  text-transform: capitalize;
+}
+
+.day-panel__empty {
+  color: var(--color-muted);
+  margin: 0 0 1rem;
+}
+
+.day-panel__events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.event {
+  border-left: 3px solid var(--color-accent);
+  padding: 0.5rem 0 0.5rem 0.75rem;
+}
+
+.event--private {
+  border-left-color: #b07d3b;
+}
+
+.event__when {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.event__title {
+  margin: 0.1rem 0;
+  font-size: 1rem;
+}
+
+.event__body {
+  margin: 0.25rem 0;
+  white-space: pre-wrap;
+}
+
+.event__contact,
+.event__attendance {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.event__contact a {
+  color: inherit;
+}
+
+.event__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.event__actions button {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.button--quiet {
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+}
+
+.button--danger {
+  background: transparent;
+  color: var(--color-error);
+  border: 1px solid var(--color-error);
+}
+
+/* --- booking form -------------------------------------------------------- */
+
+.booking-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid #e2e0da;
+  padding-top: 1rem;
+}
+
+.booking-form h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.booking-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.booking-form fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.booking-form legend {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+
+.booking-form__categories label,
+.booking-form__checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.booking-form__times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.booking-form__repeat {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--color-bg);
+  border-radius: 6px;
+}
+
+textarea,
+select {
+  padding: 0.6rem;
+  border: 1px solid #cfcdc5;
+  border-radius: 6px;
+  font: inherit;
+  background: var(--color-surface);
+  color: inherit;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}

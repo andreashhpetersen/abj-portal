@@ -133,8 +133,20 @@ returns early for detail routes. Filtering there once made cancelled bookings
 `config/urls.py` with empty `urlpatterns`; its `models.py` docstring records the
 domain rules from the brief.
 
-**The SPA has no booking UI yet** — the API is complete, the calendar page is
-still a placeholder.
+**The calendar UI is hand-built, no calendar library.** `src/lib/dates.ts` owns
+every date decision: Monday-first weeks, and `dateKey()` composing
+`YYYY-MM-DD` by hand rather than `toISOString().slice(0, 10)` — the latter is
+UTC, so an evening booking in Copenhagen would land on the previous day. Use
+these helpers instead of reaching for `Date` methods in components.
+
+The calendar fetches the whole visible grid, padding days included, so a
+booking on the 31st does not vanish when it falls in a neighbouring month's
+row. Events are indexed by *every* day they touch (`daysCovered`), so a party
+running past midnight appears on both days.
+
+**The server decides permissions, the UI reflects them.** Each event carries
+`can_cancel`, `is_attending` and `attendee_count`, so components render from
+those rather than recomputing ownership rules client-side.
 
 ## Open decisions
 
