@@ -61,8 +61,8 @@ membership are managed.
 ```
 backend/
   config/            Django project: settings/{base,dev,prod}.py, urls.py, wsgi.py
-  apps/accounts/     Custom email-based User, auth endpoints, shared permissions
-  apps/bookings/     Feature 1 — community room. Placeholder.
+  apps/accounts/     Custom email-based User, residency, auth endpoints, permissions
+  apps/bookings/     Feature 1 — community room. Models + admin, no API yet.
   apps/shoprentals/  Feature 2 — shop rentals. Placeholder.
 frontend/
   src/api/           fetch wrapper (cookies + CSRF)
@@ -82,6 +82,22 @@ Addresses are structured: `Building` holds a street and house number (the
 association covers several blocks across more than one street) and `Resident`
 adds floor and door. Both are managed in the admin — create the buildings once,
 then residency is edited inline on each user.
+
+## Booking the community room
+
+There is one room, and two live bookings may never overlap. Bookings are either
+**private** (no title — the calendar shows who booked it and how to reach them)
+or **public** (title, description, and residents can sign up to attend).
+
+Private booking is governed by a policy row edited in the admin under *Booking
+settings*: whether private booking is open at all, and how far ahead residents
+may book (14 days by default). Admins are not bound by either, so they can book
+on someone's behalf. Cancelling is soft — the booking is kept and marked
+cancelled, and its slot becomes free again.
+
+A public event can repeat daily, weekly or monthly with an interval, up to an
+end date. Occurrences are created as ordinary bookings, so any single one can be
+moved or cancelled on its own.
 
 ## Access control
 

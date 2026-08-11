@@ -4,6 +4,9 @@ django-cors-headers==4.9.0
 django-environ==0.12.1
 django-filter==25.2
 
+# Recurrence arithmetic: month-length clamping and DST-safe intervals.
+python-dateutil==2.9.0.post0
+
 # Production serving. Not needed for `runserver`, but importing config.settings.prod
 # requires whitenoise, so it stays in the base requirements.
 gunicorn==23.0.0

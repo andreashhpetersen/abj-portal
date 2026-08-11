@@ -86,11 +86,41 @@ association spans several blocks on more than one street — and `Resident` adds
 floor and door. Use `resident.address` for display rather than reassembling it,
 and `select_related("resident__building")` when listing users.
 
-**Feature apps are pre-wired placeholders.** `apps/bookings` and
-`apps/shoprentals` are in `INSTALLED_APPS` and mounted in `config/urls.py` with
-empty `urlpatterns`. Their `models.py` docstrings record the domain rules from
-the brief (private-booking 2-week horizon and admin toggle, recurrence,
-attendance, application statuses) — read them before building either feature.
+**Booking rules live on the model, not in views.** `Event.save()` calls
+`full_clean()` deliberately: DRF's `ModelSerializer` does not, so without it the
+API could store an overlapping booking that the admin would reject. Put new
+booking invariants in `Event.clean()` and they hold everywhere — API, admin,
+shell, import. The rules are: no overlap with a live event (cancelled ones free
+the slot, and touching end-to-start is fine), public events need a title,
+private ones must have none, and private bookings obey `BookingSettings`.
+
+The toggle and horizon apply **only when creating** (`self._state.adding`).
+Applying them on every save would mean that turning private bookings off left
+existing ones impossible to cancel. Admins bypass both.
+
+**Recurrence is materialised, not computed.** `EventSeries.create_occurrences()`
+writes real `Event` rows, so the calendar stays a date-range query and a single
+occurrence can be cancelled without special-casing the pattern. The arithmetic
+in `occurrence_times()` runs on local wall-clock time and re-localises, so a
+19:00 event stays at 19:00 across a DST change — don't "simplify" it to adding
+`timedelta` to an aware datetime. Series expansion is capped at
+`MAX_OCCURRENCES`.
+
+**Cancellation is soft.** `Event.cancel(by=...)` sets `cancelled_at`/
+`cancelled_by` and keeps the row; the slot frees up because
+`_clashing_events()` ignores cancelled events. Filter on
+`cancelled_at__isnull=True` when listing live bookings.
+
+**One room is assumed.** `Event` has no room FK, and `_clashing_events()` is the
+only place that assumption lives — adding a second bookable space means adding
+the FK and including it in that filter.
+
+**`apps/shoprentals` is still a placeholder** in `INSTALLED_APPS` and
+`config/urls.py` with empty `urlpatterns`; its `models.py` docstring records the
+domain rules from the brief.
+
+**Bookings have no API yet** — models, admin and tests only. `apps/bookings/urls.py`
+is still empty.
 
 ## Open decisions
 
