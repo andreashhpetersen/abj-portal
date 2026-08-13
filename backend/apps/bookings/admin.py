@@ -55,7 +55,13 @@ class EventSeriesAdmin(admin.ModelAdmin):
 class BookingSettingsAdmin(admin.ModelAdmin):
     """Singleton: no adding, no deleting, just edit the one row."""
 
-    list_display = ["__str__", "private_bookings_enabled", "private_booking_horizon_days"]
+    list_display = [
+        "__str__",
+        "private_bookings_enabled",
+        "private_booking_min_notice_days",
+        "private_booking_max_horizon_days",
+        "private_booking_weekdays",
+    ]
 
     def has_add_permission(self, request):
         return not BookingSettings.objects.exists()

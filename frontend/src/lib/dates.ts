@@ -9,6 +9,34 @@
 /** Danish weeks start on Monday. */
 export const WEEKDAYS = ['man', 'tir', 'ons', 'tor', 'fre', 'lør', 'søn']
 
+/** Full names, in the same Monday-first order the API uses (0 = Monday). */
+export const WEEKDAY_NAMES = [
+  'mandag',
+  'tirsdag',
+  'onsdag',
+  'torsdag',
+  'fredag',
+  'lørdag',
+  'søndag',
+]
+
+/** Monday-first weekday of a day key, matching Python's date.weekday(). */
+export function weekdayOf(day: string): number {
+  const [year, month, date] = day.split('-').map(Number)
+  return (new Date(year, month - 1, date).getDay() + 6) % 7
+}
+
+/** Whole calendar days from today to that day key — the unit the booking
+ *  window is measured in, so an afternoon booking for a morning slot two weeks
+ *  out is not refused on a technicality. */
+export function daysFromToday(day: string): number {
+  const [year, month, date] = day.split('-').map(Number)
+  const target = new Date(year, month - 1, date)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000)
+}
+
 /**
  * Every half hour of the day as "HH:mm", 00:00 to 23:30.
  *

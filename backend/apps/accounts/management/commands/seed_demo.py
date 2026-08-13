@@ -152,22 +152,23 @@ class Command(BaseCommand):
         return {"chair": chair, "andreas": andreas, "mette": mette, "caretaker": caretaker}
 
     def _create_bookings(self, people):
-        # Spread out so nothing clashes, and private bookings stay inside the
-        # 14-day horizon that a resident is held to.
+        # Spread out so nothing clashes. Residents' private bookings sit inside
+        # the window they are held to: at least 14 days' notice, at most 90.
         Event.objects.create(
             category=EventCategory.PRIVATE,
-            start=at(2, 17),
-            end=at(2, 23),
+            start=at(16, 17),
+            end=at(16, 23),
             created_by=people["mette"],
         )
         Event.objects.create(
             category=EventCategory.PRIVATE,
-            start=at(9, 12),
-            end=at(9, 16),
+            start=at(22, 12),
+            end=at(22, 16),
             created_by=people["andreas"],
         )
 
-        # Runs past midnight — shows on two days in the calendar.
+        # Close in and running past midnight: only an admin may book this, and
+        # it shows on two days in the calendar.
         Event.objects.create(
             category=EventCategory.PRIVATE,
             start=at(12, 19),
@@ -209,8 +210,8 @@ class Command(BaseCommand):
         # One cancelled booking, so the freed-slot behaviour is visible.
         cancelled = Event.objects.create(
             category=EventCategory.PRIVATE,
-            start=at(11, 10),
-            end=at(11, 14),
+            start=at(25, 10),
+            end=at(25, 14),
             created_by=people["mette"],
         )
         cancelled.cancel(by=people["mette"])

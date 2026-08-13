@@ -35,13 +35,13 @@ def admin_user(db):
     )
 
 
-def book(user, days_ahead=3, category=EventCategory.PRIVATE, hours=2, **extra):
+def book(user, days_ahead=20, category=EventCategory.PRIVATE, hours=2, **extra):
     start, end = slot(days_ahead, hours)
     return Event.objects.create(category=category, start=start, end=end, created_by=user, **extra)
 
 
 def test_an_event_must_end_after_it_starts(resident):
-    start, _end = slot(3)
+    start, _end = slot(20)
     event = Event(category=EventCategory.PRIVATE, start=start, end=start, created_by=resident)
     with pytest.raises(ValidationError) as caught:
         event.full_clean()
@@ -62,7 +62,7 @@ def test_an_event_cannot_be_created_in_the_past(resident):
 
 
 def test_the_room_cannot_be_double_booked(resident, other_resident):
-    existing = book(resident, days_ahead=5, hours=4)
+    existing = book(resident, days_ahead=25, hours=4)
     overlapping = Event(
         category=EventCategory.PRIVATE,
         start=existing.start + timedelta(hours=1),
@@ -75,7 +75,7 @@ def test_the_room_cannot_be_double_booked(resident, other_resident):
 
 
 def test_bookings_may_touch_at_the_edges(resident, other_resident):
-    first = book(resident, days_ahead=5, hours=2)
+    first = book(resident, days_ahead=25, hours=2)
     back_to_back = Event(
         category=EventCategory.PRIVATE,
         start=first.end,
@@ -86,7 +86,7 @@ def test_bookings_may_touch_at_the_edges(resident, other_resident):
 
 
 def test_a_cancelled_booking_frees_the_slot(resident, other_resident):
-    first = book(resident, days_ahead=6)
+    first = book(resident, days_ahead=26)
     first.cancel(by=resident)
 
     replacement = Event(
@@ -99,14 +99,14 @@ def test_a_cancelled_booking_frees_the_slot(resident, other_resident):
 
 
 def test_editing_an_event_does_not_clash_with_itself(resident):
-    event = book(resident, days_ahead=7)
+    event = book(resident, days_ahead=27)
     event.end = event.end + timedelta(hours=1)
     event.save()  # does not raise
     assert Event.objects.get(pk=event.pk).end == event.end
 
 
 def test_public_events_need_a_title(resident):
-    start, end = slot(4)
+    start, end = slot(20)
     event = Event(category=EventCategory.PUBLIC, start=start, end=end, created_by=resident)
     with pytest.raises(ValidationError) as caught:
         event.full_clean()
@@ -114,7 +114,7 @@ def test_public_events_need_a_title(resident):
 
 
 def test_private_bookings_carry_no_title(resident):
-    start, end = slot(4)
+    start, end = slot(20)
     event = Event(
         category=EventCategory.PRIVATE,
         title="Fødselsdag",
@@ -127,27 +127,128 @@ def test_private_bookings_carry_no_title(resident):
     assert "title" in caught.value.error_dict
 
 
-def test_a_resident_cannot_book_privately_beyond_the_horizon(resident):
-    start, end = slot(30)
+def test_a_private_booking_needs_two_weeks_notice(resident):
+    """The 14 days is a notice period, not a ceiling."""
+    start, end = slot(5)
     event = Event(category=EventCategory.PRIVATE, start=start, end=end, created_by=resident)
     with pytest.raises(ValidationError) as caught:
         event.full_clean()
     assert "start" in caught.value.error_dict
 
 
-def test_a_resident_can_book_privately_inside_the_horizon(resident):
-    book(resident, days_ahead=13)  # does not raise
+def test_a_private_booking_exactly_at_the_notice_period_is_accepted(resident):
+    """The boundary counts whole days, so booking day 14 works at any hour."""
+    book(resident, days_ahead=14)  # does not raise
     assert Event.objects.count() == 1
 
 
-def test_an_admin_may_book_privately_beyond_the_horizon(admin_user):
-    book(admin_user, days_ahead=90)  # does not raise
+def test_a_private_booking_just_inside_the_notice_period_is_accepted(resident):
+    book(resident, days_ahead=15)  # does not raise
     assert Event.objects.count() == 1
 
 
-def test_public_events_ignore_the_private_horizon(resident):
-    book(resident, days_ahead=90, category=EventCategory.PUBLIC, title="Sommerfest")
+def test_a_private_booking_exactly_at_the_horizon_is_accepted(resident):
+    book(resident, days_ahead=90)  # does not raise
     assert Event.objects.count() == 1
+
+
+def test_a_private_booking_cannot_be_more_than_three_months_out(resident):
+    start, end = slot(120)
+    event = Event(category=EventCategory.PRIVATE, start=start, end=end, created_by=resident)
+    with pytest.raises(ValidationError) as caught:
+        event.full_clean()
+    assert "start" in caught.value.error_dict
+
+
+def test_a_private_booking_inside_three_months_is_accepted(resident):
+    book(resident, days_ahead=80)  # does not raise
+    assert Event.objects.count() == 1
+
+
+def test_an_admin_is_bound_by_neither_end_of_the_window(admin_user):
+    book(admin_user, days_ahead=1)
+    book(admin_user, days_ahead=200)
+    assert Event.objects.count() == 2
+
+
+def test_public_events_ignore_the_private_booking_window(resident):
+    book(resident, days_ahead=2, category=EventCategory.PUBLIC, title="Sommerfest")
+    book(resident, days_ahead=200, category=EventCategory.PUBLIC, title="Nytår")
+    assert Event.objects.count() == 2
+
+
+# --- which weekdays the room is available -----------------------------------
+
+
+def only_weekday(weekday):
+    """Restrict private bookings to a single weekday. 0 = Monday."""
+    policy = BookingSettings.load()
+    policy.private_booking_weekdays = [weekday]
+    policy.save()
+
+
+def a_private_booking_on(resident, weekday, weeks_ahead=4):
+    """Build an unsaved private booking landing on that weekday, well ahead."""
+    start = timezone.localtime(timezone.now()) + timedelta(weeks=weeks_ahead)
+    start += timedelta(days=(weekday - start.weekday()) % 7)
+    start = start.replace(hour=18, minute=0, second=0, microsecond=0)
+    return Event(
+        category=EventCategory.PRIVATE,
+        start=start,
+        end=start + timedelta(hours=3),
+        created_by=resident,
+    )
+
+
+def test_a_private_booking_on_an_allowed_weekday_is_accepted(resident):
+    only_weekday(5)  # Saturdays only
+    a_private_booking_on(resident, weekday=5).full_clean()  # does not raise
+
+
+def test_a_private_booking_on_a_closed_weekday_is_rejected(resident):
+    only_weekday(5)  # Saturdays only
+    with pytest.raises(ValidationError) as caught:
+        a_private_booking_on(resident, weekday=2).full_clean()  # a Wednesday
+    assert "start" in caught.value.error_dict
+
+
+def test_the_weekday_rule_does_not_apply_to_public_events(resident):
+    only_weekday(5)
+    event = a_private_booking_on(resident, weekday=2)
+    event.category = EventCategory.PUBLIC
+    event.title = "Beboermøde"
+    event.full_clean()  # does not raise
+
+
+def test_an_admin_may_book_on_a_closed_weekday(admin_user):
+    only_weekday(5)
+    a_private_booking_on(admin_user, weekday=2).full_clean()  # does not raise
+
+
+def test_the_weekday_is_judged_on_the_day_the_booking_starts(resident):
+    """A Saturday party running to 02:00 is a Saturday booking."""
+    only_weekday(5)
+    event = a_private_booking_on(resident, weekday=5)
+    event.start = event.start.replace(hour=20)
+    event.end = event.start + timedelta(hours=6)  # into Sunday
+    event.full_clean()  # does not raise
+
+
+def test_the_policy_needs_at_least_one_weekday(db):
+    policy = BookingSettings.load()
+    policy.private_booking_weekdays = []
+    with pytest.raises(ValidationError) as caught:
+        policy.full_clean()
+    assert "private_booking_weekdays" in caught.value.error_dict
+
+
+def test_the_horizon_cannot_be_shorter_than_the_notice_period(db):
+    policy = BookingSettings.load()
+    policy.private_booking_min_notice_days = 30
+    policy.private_booking_max_horizon_days = 10
+    with pytest.raises(ValidationError) as caught:
+        policy.full_clean()
+    assert "private_booking_max_horizon_days" in caught.value.error_dict
 
 
 def test_residents_cannot_book_privately_when_the_toggle_is_off(resident):
@@ -167,13 +268,13 @@ def test_admins_can_still_book_privately_when_the_toggle_is_off(admin_user):
     policy.private_bookings_enabled = False
     policy.save()
 
-    book(admin_user, days_ahead=3)  # does not raise
+    book(admin_user, days_ahead=20)  # does not raise
     assert Event.objects.count() == 1
 
 
 def test_closing_private_bookings_does_not_strand_existing_ones(resident):
     """Regression: the toggle governs new bookings, not existing ones."""
-    event = book(resident, days_ahead=3)
+    event = book(resident, days_ahead=20)
 
     policy = BookingSettings.load()
     policy.private_bookings_enabled = False
@@ -184,7 +285,7 @@ def test_closing_private_bookings_does_not_strand_existing_ones(resident):
 
 
 def test_cancelling_records_who_did_it(resident, admin_user):
-    event = book(resident, days_ahead=3)
+    event = book(resident, days_ahead=20)
     event.cancel(by=admin_user)
 
     event.refresh_from_db()
@@ -194,7 +295,7 @@ def test_cancelling_records_who_did_it(resident, admin_user):
 
 
 def test_cancelling_twice_keeps_the_first_cancellation(resident, admin_user):
-    event = book(resident, days_ahead=3)
+    event = book(resident, days_ahead=20)
     event.cancel(by=resident)
     first_time = event.cancelled_at
 
@@ -206,7 +307,7 @@ def test_cancelling_twice_keeps_the_first_cancellation(resident, admin_user):
 def test_contact_details_come_from_whoever_booked(resident):
     resident.phone = "+45 12 34 56 78"
     resident.save()
-    event = book(resident, days_ahead=3)
+    event = book(resident, days_ahead=20)
 
     assert event.contact_email == "beboer@example.dk"
     assert event.contact_phone == "+45 12 34 56 78"
@@ -214,12 +315,12 @@ def test_contact_details_come_from_whoever_booked(resident):
 
 def test_booking_settings_are_a_singleton(db):
     first = BookingSettings.load()
-    first.private_booking_horizon_days = 21
+    first.private_booking_min_notice_days = 21
     first.save()
 
     assert BookingSettings.load().pk == first.pk
     assert BookingSettings.objects.count() == 1
-    assert BookingSettings.load().private_booking_horizon_days == 21
+    assert BookingSettings.load().private_booking_min_notice_days == 21
 
 
 def test_a_resident_can_sign_up_for_a_public_event(resident, other_resident):
@@ -238,7 +339,7 @@ def test_a_resident_cannot_sign_up_twice(resident, other_resident):
 
 
 def test_private_bookings_do_not_take_attendance(resident, other_resident):
-    event = book(resident, days_ahead=3)
+    event = book(resident, days_ahead=20)
     with pytest.raises(ValidationError) as caught:
         EventAttendance.objects.create(event=event, user=other_resident)
     assert "event" in caught.value.error_dict

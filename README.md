@@ -97,9 +97,18 @@ There is one room, and two live bookings may never overlap. Bookings are either
 or **public** (title, description, and residents can sign up to attend).
 
 Private booking is governed by a policy row edited in the admin under *Booking
-settings*: whether private booking is open at all, and how far ahead residents
-may book (14 days by default). Admins are not bound by either, so they can book
-on someone's behalf. Cancelling is soft — the booking is kept and marked
+settings*:
+
+* whether private booking is open at all,
+* a **notice period** — a resident must book at least this far ahead, 14 days
+  by default, so neighbours know the room is spoken for,
+* a **horizon** — and no further ahead than this, 90 days by default, so nobody
+  blocks the calendar a year out,
+* which **weekdays** the room may be booked privately.
+
+Admins are bound by none of them and can book on a resident's behalf. The
+window counts whole calendar days, so a booking exactly 14 days out is fine
+whatever the time of day. Cancelling is soft — the booking is kept and marked
 cancelled, and its slot becomes free again.
 
 A public event can repeat daily, weekly or monthly with an interval, up to an

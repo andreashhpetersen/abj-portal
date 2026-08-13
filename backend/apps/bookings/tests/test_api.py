@@ -46,7 +46,7 @@ def as_user(user):
     return client
 
 
-def booking_payload(days_ahead=3, hours=2, **overrides):
+def booking_payload(days_ahead=20, hours=2, **overrides):
     start = timezone.now() + timedelta(days=days_ahead)
     payload = {
         "category": EventCategory.PRIVATE,
@@ -57,7 +57,7 @@ def booking_payload(days_ahead=3, hours=2, **overrides):
     return payload
 
 
-def make_event(user, days_ahead=3, **overrides):
+def make_event(user, days_ahead=20, **overrides):
     start = timezone.now() + timedelta(days=days_ahead)
     fields = {
         "category": EventCategory.PRIVATE,
@@ -77,7 +77,7 @@ def test_the_calendar_requires_a_login(api, db):
 
 
 def test_any_logged_in_user_sees_the_calendar(resident, neighbour):
-    make_event(neighbour, days_ahead=4)
+    make_event(neighbour, days_ahead=24)
     response = as_user(resident).get(reverse("bookings:event-list"))
 
     assert response.status_code == 200
@@ -110,7 +110,7 @@ def test_you_always_book_in_your_own_name(resident, neighbour):
 
 
 def test_a_clashing_booking_is_rejected_with_a_field_error(resident, neighbour):
-    existing = make_event(neighbour, days_ahead=5)
+    existing = make_event(neighbour, days_ahead=25)
     response = as_user(resident).post(
         reverse("bookings:event-list"),
         booking_payload(
@@ -124,20 +124,39 @@ def test_a_clashing_booking_is_rejected_with_a_field_error(resident, neighbour):
     assert "start" in response.json()
 
 
-def test_booking_beyond_the_horizon_is_rejected(resident):
+def test_booking_with_too_little_notice_is_rejected(resident):
     response = as_user(resident).post(
-        reverse("bookings:event-list"), booking_payload(days_ahead=40), format="json"
+        reverse("bookings:event-list"), booking_payload(days_ahead=4), format="json"
     )
 
     assert response.status_code == 400
     assert "start" in response.json()
 
 
-def test_an_admin_may_book_beyond_the_horizon(admin_user):
-    response = as_user(admin_user).post(
-        reverse("bookings:event-list"), booking_payload(days_ahead=40), format="json"
+def test_booking_beyond_three_months_is_rejected(resident):
+    response = as_user(resident).post(
+        reverse("bookings:event-list"), booking_payload(days_ahead=120), format="json"
     )
-    assert response.status_code == 201
+
+    assert response.status_code == 400
+    assert "start" in response.json()
+
+
+def test_an_admin_may_book_at_either_extreme(admin_user):
+    client = as_user(admin_user)
+
+    assert (
+        client.post(
+            reverse("bookings:event-list"), booking_payload(days_ahead=1), format="json"
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            reverse("bookings:event-list"), booking_payload(days_ahead=200), format="json"
+        ).status_code
+        == 201
+    )
 
 
 def test_a_public_event_without_a_title_is_rejected(resident):
@@ -211,7 +230,7 @@ def test_an_admin_can_delete_a_cancelled_booking(resident, admin_user):
 
 
 def test_the_owner_can_move_their_booking(resident):
-    event = make_event(resident, days_ahead=6)
+    event = make_event(resident, days_ahead=26)
     new_start = event.start + timedelta(hours=1)
     response = as_user(resident).patch(
         reverse("bookings:event-detail", args=[event.pk]),
@@ -225,7 +244,7 @@ def test_the_owner_can_move_their_booking(resident):
 
 
 def test_someone_else_cannot_move_your_booking(resident, neighbour):
-    event = make_event(resident, days_ahead=6)
+    event = make_event(resident, days_ahead=26)
     response = as_user(neighbour).patch(
         reverse("bookings:event-detail", args=[event.pk]),
         {"title": "Kapret"},
@@ -252,7 +271,7 @@ def test_only_an_admin_may_delete_a_booking_outright(resident, admin_user):
 
 
 def test_the_window_includes_events_that_merely_overlap_it(resident):
-    event = make_event(resident, days_ahead=5)
+    event = make_event(resident, days_ahead=25)
     day = timezone.localtime(event.start).date()
 
     response = as_user(resident).get(
@@ -264,7 +283,7 @@ def test_the_window_includes_events_that_merely_overlap_it(resident):
 
 
 def test_events_outside_the_window_are_left_out(resident):
-    event = make_event(resident, days_ahead=5)
+    event = make_event(resident, days_ahead=25)
     far_off = (timezone.localtime(event.start) + timedelta(days=3)).date()
 
     response = as_user(resident).get(
@@ -291,7 +310,7 @@ def test_cancelled_bookings_are_hidden_unless_asked_for(resident):
 def test_the_calendar_shows_contact_details_for_whoever_booked(resident, neighbour):
     neighbour.phone = "+45 12 34 56 78"
     neighbour.save()
-    make_event(neighbour, days_ahead=4)
+    make_event(neighbour, days_ahead=24)
 
     booking = as_user(resident).get(reverse("bookings:event-list")).json()[0]
     assert booking["created_by"]["email"] == "nabo@example.dk"
@@ -326,7 +345,7 @@ def test_signing_up_twice_is_a_bad_request(resident, neighbour):
 
 
 def test_private_bookings_take_no_attendance(resident, neighbour):
-    event = make_event(neighbour, days_ahead=3)
+    event = make_event(neighbour, days_ahead=20)
     response = as_user(resident).post(reverse("bookings:event-attendance", args=[event.pk]))
 
     assert response.status_code == 400
@@ -359,7 +378,7 @@ def test_creating_a_series_returns_its_occurrences(resident):
 def test_a_clashing_series_leaves_nothing_behind(resident, neighbour):
     """The whole series is rolled back — half a series is worse than none."""
     start = timezone.now() + timedelta(days=2)
-    make_event(neighbour, days_ahead=9)  # sits on the second occurrence's week
+    make_event(neighbour, days_ahead=29)  # sits on the second occurrence's week
 
     clash = Event.objects.get()
     response = as_user(resident).post(
@@ -387,7 +406,10 @@ def test_anyone_logged_in_can_read_the_policy(resident):
     response = as_user(resident).get(reverse("bookings:settings"))
 
     assert response.status_code == 200
-    assert response.json()["private_booking_horizon_days"] == 14
+    policy = response.json()
+    assert policy["private_booking_min_notice_days"] == 14
+    assert policy["private_booking_max_horizon_days"] == 90
+    assert policy["private_booking_weekdays"] == [0, 1, 2, 3, 4, 5, 6]
 
 
 def test_only_admins_may_change_the_policy(resident, admin_user):

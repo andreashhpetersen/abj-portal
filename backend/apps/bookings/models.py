@@ -20,6 +20,8 @@ the ability to edit and delete everything, which is worth little if they cannot
 place a booking on a resident's behalf.
 """
 
+from datetime import timedelta
+
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -42,11 +44,21 @@ class Frequency(models.TextChoices):
     MONTHLY = "monthly", _("monthly")
 
 
+def all_weekdays():
+    """Default for `private_booking_weekdays` — every day is bookable."""
+    return list(range(7))
+
+
 class BookingSettings(models.Model):
     """Association-wide booking policy. A singleton, always row 1.
 
     Kept in the database rather than in `settings.py` because the brief asks
-    admins to be able to turn private booking on and off themselves.
+    admins to be able to turn private booking on and off, and to decide which
+    weekdays the room is available for private use.
+
+    A private booking must be made **at least** `min_notice` days ahead — it is
+    a notice period, so neighbours know the room is spoken for — and no more
+    than `max_horizon` days ahead, so the calendar cannot be blocked a year out.
     """
 
     private_bookings_enabled = models.BooleanField(
@@ -54,10 +66,20 @@ class BookingSettings(models.Model):
         default=True,
         help_text=_("When off, only admins can create private bookings."),
     )
-    private_booking_horizon_days = models.PositiveSmallIntegerField(
-        _("private booking horizon (days)"),
+    private_booking_min_notice_days = models.PositiveSmallIntegerField(
+        _("private booking notice (days)"),
         default=14,
-        help_text=_("How far ahead a resident may book the room privately."),
+        help_text=_("Residents must book at least this many days ahead."),
+    )
+    private_booking_max_horizon_days = models.PositiveSmallIntegerField(
+        _("private booking horizon (days)"),
+        default=90,
+        help_text=_("And no more than this many days ahead. 90 ≈ three months."),
+    )
+    private_booking_weekdays = models.JSONField(
+        _("private booking weekdays"),
+        default=all_weekdays,
+        help_text=_("Weekdays a private booking may start on. 0 = Monday, 6 = Sunday."),
     )
 
     class Meta:
@@ -70,6 +92,32 @@ class BookingSettings(models.Model):
     def save(self, *args, **kwargs):
         self.pk = 1
         super().save(*args, **kwargs)
+
+    def clean(self):
+        weekdays = self.private_booking_weekdays
+        if not isinstance(weekdays, list) or any(
+            not isinstance(day, int) or day < 0 or day > 6 for day in weekdays
+        ):
+            raise ValidationError(
+                {"private_booking_weekdays": _("Use a list of whole numbers from 0 to 6.")}
+            )
+        if not weekdays:
+            raise ValidationError(
+                {
+                    "private_booking_weekdays": _(
+                        "Pick at least one weekday. To stop private bookings "
+                        "altogether, turn them off instead."
+                    )
+                }
+            )
+        if self.private_booking_max_horizon_days < self.private_booking_min_notice_days:
+            raise ValidationError(
+                {
+                    "private_booking_max_horizon_days": _(
+                        "The horizon must be at least as far ahead as the notice period."
+                    )
+                }
+            )
 
     def delete(self, *args, **kwargs):
         """The singleton is never deleted — there must always be a policy."""
@@ -290,7 +338,7 @@ class Event(models.Model):
             raise ValidationError(errors)
 
     def _private_booking_errors(self):
-        """The toggle and the horizon, neither of which binds an admin."""
+        """The policy for private bookings, none of which binds an admin."""
         booked_by_admin = self.created_by_id and self.created_by.is_staff
         if booked_by_admin:
             return {}
@@ -299,13 +347,32 @@ class Event(models.Model):
         if not policy.private_bookings_enabled:
             return {"category": _("Private bookings are currently closed.")}
 
-        horizon = timezone.now() + relativedelta(days=policy.private_booking_horizon_days)
-        if self.start > horizon:
-            return {
-                "start": _("Private bookings can be made at most %(days)d days ahead.")
-                % {"days": policy.private_booking_horizon_days}
-            }
-        return {}
+        problems = []
+
+        # Whole calendar days, not a moving timestamp: booking something 14 days
+        # out at 10:00 should not be refused merely because it is 15:00 today.
+        today = timezone.localdate()
+        booked_for = timezone.localtime(self.start).date()
+        earliest = today + timedelta(days=policy.private_booking_min_notice_days)
+        latest = today + timedelta(days=policy.private_booking_max_horizon_days)
+        if booked_for < earliest:
+            problems.append(
+                _("Private bookings must be made at least %(days)d days ahead.")
+                % {"days": policy.private_booking_min_notice_days}
+            )
+        elif booked_for > latest:
+            problems.append(
+                _("Private bookings can be made at most %(days)d days ahead.")
+                % {"days": policy.private_booking_max_horizon_days}
+            )
+
+        # Judged on the day the booking starts, so an evening running past
+        # midnight is allowed by the weekday it began on.
+        weekday = timezone.localtime(self.start).weekday()
+        if weekday not in policy.private_booking_weekdays:
+            problems.append(_("The room is not available for private bookings that weekday."))
+
+        return {"start": problems} if problems else {}
 
 
 class EventAttendance(models.Model):

@@ -94,9 +94,19 @@ shell, import. The rules are: no overlap with a live event (cancelled ones free
 the slot, and touching end-to-start is fine), public events need a title,
 private ones must have none, and private bookings obey `BookingSettings`.
 
-The toggle and horizon apply **only when creating** (`self._state.adding`).
-Applying them on every save would mean that turning private bookings off left
-existing ones impossible to cancel. Admins bypass both.
+The private-booking policy is a **notice period, not a ceiling**: a resident
+must book *at least* `private_booking_min_notice_days` ahead (14) and *at most*
+`private_booking_max_horizon_days` (90), on a weekday listed in
+`private_booking_weekdays`. The brief's phrase "booked 2 weeks in advance" was
+originally implemented backwards as a ceiling — it is a floor. The window is
+measured in whole calendar days via `timezone.localdate()`, not against a moving
+timestamp, so a booking exactly 14 days out is valid at any hour. The weekday is
+judged on the day the booking *starts*, so a Saturday party running to 02:00
+counts as Saturday.
+
+These rules apply **only when creating** (`self._state.adding`). Applying them
+on every save would mean that closing private bookings left existing ones
+impossible to cancel. Admins bypass all of them.
 
 **Recurrence is materialised, not computed.** `EventSeries.create_occurrences()`
 writes real `Event` rows, so the calendar stays a date-range query and a single

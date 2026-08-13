@@ -435,3 +435,8 @@ select {
   font-size: 0.8rem;
   color: var(--color-muted);
 }
+
+/* A hint that explains why the form cannot be submitted as it stands. */
+.hint--blocking {
+  color: var(--color-error);
+}

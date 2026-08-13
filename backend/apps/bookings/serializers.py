@@ -140,7 +140,19 @@ class EventSeriesSerializer(serializers.ModelSerializer):
 class BookingSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = BookingSettings
-        fields = ["private_bookings_enabled", "private_booking_horizon_days"]
+        fields = [
+            "private_bookings_enabled",
+            "private_booking_min_notice_days",
+            "private_booking_max_horizon_days",
+            "private_booking_weekdays",
+        ]
+
+    def validate(self, attrs):
+        candidate = copy.deepcopy(self.instance) if self.instance else BookingSettings()
+        for field, value in attrs.items():
+            setattr(candidate, field, value)
+        run_model_validation(candidate)
+        return attrs
 
 
 class AttendanceSerializer(serializers.Serializer):

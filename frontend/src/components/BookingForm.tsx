@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { BookingPolicy, EventCategory, Frequency } from '../api/bookings'
 import { bookings, fieldErrors } from '../api/bookings'
 import { useAuth } from '../auth/AuthContext'
-import { TIME_SLOTS, combineLocal } from '../lib/dates'
+import { TIME_SLOTS, WEEKDAY_NAMES, combineLocal, daysFromToday, weekdayOf } from '../lib/dates'
 
 import type { FormEvent } from 'react'
 
@@ -17,6 +17,35 @@ const FREQUENCY_LABELS: Record<Frequency, string> = {
   daily: 'Hver dag',
   weekly: 'Hver uge',
   monthly: 'Hver måned',
+}
+
+/**
+ * Why this day cannot take a private booking, or null if it can.
+ *
+ * This mirrors the server's rules so the form can say why up front instead of
+ * waiting for a rejected submit. The server remains the authority.
+ */
+function privateBookingProblem(
+  day: string,
+  policy: BookingPolicy | null,
+  exempt: boolean,
+): string | null {
+  if (policy === null || exempt) return null
+
+  const daysAhead = daysFromToday(day)
+  if (daysAhead < policy.private_booking_min_notice_days) {
+    return `Private bookinger skal laves mindst ${policy.private_booking_min_notice_days} dage frem.`
+  }
+  if (daysAhead > policy.private_booking_max_horizon_days) {
+    return `Private bookinger kan laves højst ${policy.private_booking_max_horizon_days} dage frem.`
+  }
+  if (!policy.private_booking_weekdays.includes(weekdayOf(day))) {
+    const open = policy.private_booking_weekdays
+      .map((weekday) => WEEKDAY_NAMES[weekday])
+      .join(', ')
+    return `Lokalet kan kun bookes privat på: ${open}.`
+  }
+  return null
 }
 
 export function BookingForm({ day, policy, onCreated }: Props) {
@@ -34,9 +63,11 @@ export function BookingForm({ day, policy, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false)
 
   // Admins may book privately whatever the policy says, so the form follows the
-  // same rule the server enforces rather than guessing.
-  const privateClosed = policy !== null && !policy.private_bookings_enabled && !member?.is_staff
+  // same rules the server enforces rather than guessing.
+  const exempt = member?.is_staff ?? false
+  const privateClosed = policy !== null && !policy.private_bookings_enabled && !exempt
   const isPublic = category === 'public'
+  const privateBlockedReason = privateBookingProblem(day, policy, exempt)
   // A booking that ends earlier than it starts runs past midnight.
   const endsNextDay = endTime <= startTime
 
@@ -111,12 +142,14 @@ export function BookingForm({ day, policy, onCreated }: Props) {
         </label>
       </fieldset>
 
-      {privateClosed && (
-        <p className="hint">Private bookinger er lukket for øjeblikket.</p>
+      {privateClosed && <p className="hint">Private bookinger er lukket for øjeblikket.</p>}
+      {!isPublic && !privateClosed && privateBlockedReason && (
+        <p className="hint hint--blocking">{privateBlockedReason}</p>
       )}
-      {!isPublic && policy && !privateClosed && (
+      {!isPublic && !privateClosed && !privateBlockedReason && policy && (
         <p className="hint">
-          Private bookinger kan laves op til {policy.private_booking_horizon_days} dage frem.
+          Private bookinger skal laves mindst {policy.private_booking_min_notice_days} og højst{' '}
+          {policy.private_booking_max_horizon_days} dage frem.
         </p>
       )}
       {errors.category && <p className="error">{errors.category}</p>}
@@ -226,7 +259,10 @@ export function BookingForm({ day, policy, onCreated }: Props) {
         </p>
       )}
 
-      <button type="submit" disabled={submitting || (privateClosed && !isPublic)}>
+      <button
+        type="submit"
+        disabled={submitting || (!isPublic && (privateClosed || privateBlockedReason !== null))}
+      >
         {submitting ? 'Booker…' : 'Book'}
       </button>
     </form>

@@ -32,7 +32,12 @@ export interface BookingEvent {
 
 export interface BookingPolicy {
   private_bookings_enabled: boolean
-  private_booking_horizon_days: number
+  /** A private booking must be at least this many days ahead. */
+  private_booking_min_notice_days: number
+  /** And at most this many. */
+  private_booking_max_horizon_days: number
+  /** Weekdays a private booking may start on. 0 = Monday. */
+  private_booking_weekdays: number[]
 }
 
 export interface NewBooking {
