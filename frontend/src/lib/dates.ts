@@ -9,6 +9,18 @@
 /** Danish weeks start on Monday. */
 export const WEEKDAYS = ['man', 'tir', 'ons', 'tor', 'fre', 'lør', 'søn']
 
+/**
+ * Every half hour of the day as "HH:mm", 00:00 to 23:30.
+ *
+ * The booking form picks from these rather than using <input type="time">,
+ * which renders as a 12-hour AM/PM control whenever the *browser's* locale is
+ * English — the document's lang attribute does not override that.
+ */
+export const TIME_SLOTS = Array.from({ length: 48 }, (_, index) => {
+  const hours = String(Math.floor(index / 2)).padStart(2, '0')
+  return `${hours}:${index % 2 === 0 ? '00' : '30'}`
+})
+
 /** Local YYYY-MM-DD, the key everything in the calendar is grouped by. */
 export function dateKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -56,7 +68,12 @@ export function combineLocal(day: string, time: string, dayOffset = 0): string {
 }
 
 export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
+  // hour12: false is belt and braces — da-DK is already a 24-hour locale.
+  return new Date(iso).toLocaleTimeString('da-DK', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
 }
 
 export function formatTimeRange(startIso: string, endIso: string): string {

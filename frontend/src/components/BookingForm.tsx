@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { BookingPolicy, EventCategory, Frequency } from '../api/bookings'
 import { bookings, fieldErrors } from '../api/bookings'
 import { useAuth } from '../auth/AuthContext'
-import { combineLocal } from '../lib/dates'
+import { TIME_SLOTS, combineLocal } from '../lib/dates'
 
 import type { FormEvent } from 'react'
 
@@ -124,21 +124,23 @@ export function BookingForm({ day, policy, onCreated }: Props) {
       <div className="booking-form__times">
         <label>
           Fra
-          <input
-            type="time"
-            value={startTime}
-            required
-            onChange={(changed) => setStartTime(changed.target.value)}
-          />
+          <select value={startTime} onChange={(changed) => setStartTime(changed.target.value)}>
+            {TIME_SLOTS.map((slot) => (
+              <option key={slot} value={slot}>
+                {slot}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Til
-          <input
-            type="time"
-            value={endTime}
-            required
-            onChange={(changed) => setEndTime(changed.target.value)}
-          />
+          <select value={endTime} onChange={(changed) => setEndTime(changed.target.value)}>
+            {TIME_SLOTS.map((slot) => (
+              <option key={slot} value={slot}>
+                {slot}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
       {endsNextDay && <p className="hint">Bookingen slutter dagen efter.</p>}
