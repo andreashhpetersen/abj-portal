@@ -15,6 +15,9 @@ export function Layout() {
             Kalender
           </NavLink>
           {member?.is_business_committee && <NavLink to="/erhverv">Erhvervslejemål</NavLink>}
+          {/* A plain anchor, not a NavLink: the Django admin is a separate app
+              served by the backend, so this must be a full page load. */}
+          {member?.is_staff && <a href="/admin/">Administration</a>}
         </nav>
         <div className="app-header__user">
           {/* Non-residents have no address, so fall back to the email alone. */}

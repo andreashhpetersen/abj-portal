@@ -46,11 +46,14 @@ npm run dev                           # http://127.0.0.1:5173
 ```
 
 Open http://127.0.0.1:5173 and log in with the superuser you just created.
-Vite proxies `/api` to Django, so the browser sees one origin and the session
-cookie works exactly as it will in production.
+Vite proxies `/api`, `/admin` and `/static` to Django, so the browser sees one
+origin and the session cookie works exactly as it will in production.
 
-The Django admin at http://127.0.0.1:8000/admin/ is where members and committee
-membership are managed.
+The Django admin — where members, committee membership and the booking policy
+are managed — is at http://127.0.0.1:5173/admin/ (or straight at
+http://127.0.0.1:8000/admin/). Staff accounts get an *Administration* link in
+the app's header, and the session is shared: logging into the portal logs you
+into the admin.
 
 ## Commands
 
@@ -162,6 +165,9 @@ is intentional.
 Not set up yet. The intended target is DigitalOcean App Platform with managed
 Postgres:
 
+* Routing: `/api`, `/admin` and `/static` must reach Django; everything else
+  falls through to the SPA's `index.html`, since the frontend owns its own
+  routes
 * API: `gunicorn config.wsgi` with `DJANGO_SETTINGS_MODULE=config.settings.prod`
 * Static files: collected by WhiteNoise (`python manage.py collectstatic`)
 * SPA: `npm run build`, served as a static site on the same domain so no CORS
