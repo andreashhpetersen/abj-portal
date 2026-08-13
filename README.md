@@ -26,8 +26,15 @@ cd backend
 pip install -r requirements-dev.txt
 python manage.py migrate
 python manage.py createsuperuser      # asks for email, not username
+python manage.py seed_demo            # optional: demo residents and bookings
 python manage.py runserver            # http://127.0.0.1:8000
 ```
+
+`seed_demo` fills the calendar with plausible Danish data — residents across
+three buildings, private and public bookings, a recurring café, one cancelled
+booking, and an employee account with no residency. Every account uses the
+password `beboer1234`, so the command refuses to run unless `DEBUG=True`. Rebuild
+it any time with `python manage.py seed_demo --reset`.
 
 **Frontend**
 
