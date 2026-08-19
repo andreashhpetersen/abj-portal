@@ -193,10 +193,11 @@ button:disabled {
   background: var(--color-bg);
 }
 
+/* A narrow week-number column, then the seven days. */
 .calendar__weekdays,
 .calendar__grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: 1.6rem repeat(7, 1fr);
   gap: 2px;
 }
 
@@ -205,6 +206,17 @@ button:disabled {
   color: var(--color-muted);
   text-align: center;
   margin-bottom: 2px;
+}
+
+.calendar__week,
+.calendar__week-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: var(--color-muted);
+  /* Set apart from the days so it does not read as an eighth column of dates. */
+  border-right: 1px solid var(--color-bg);
 }
 
 .calendar__day {

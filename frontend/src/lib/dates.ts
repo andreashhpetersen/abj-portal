@@ -49,6 +49,28 @@ export const TIME_SLOTS = Array.from({ length: 48 }, (_, index) => {
   return `${hours}:${index % 2 === 0 ? '00' : '30'}`
 })
 
+/**
+ * ISO 8601 week number — the numbering Denmark uses, so "uge 34" in the
+ * calendar matches every other Danish calendar.
+ *
+ * A week belongs to the year that holds its Thursday, so the count runs from
+ * this week's Thursday to the Thursday of week 1 (the week containing 4
+ * January) rather than from the date itself. That is what makes 1 January
+ * correctly read as week 52 or 53 of the previous year.
+ */
+export function isoWeek(date: Date): number {
+  const thursday = thursdayOfWeek(date)
+  const firstThursday = thursdayOfWeek(new Date(thursday.getFullYear(), 0, 4))
+  const weeks = (thursday.getTime() - firstThursday.getTime()) / (7 * 86_400_000)
+  // Round: the difference is a whole number of weeks give or take a DST hour.
+  return 1 + Math.round(weeks)
+}
+
+function thursdayOfWeek(date: Date): Date {
+  const mondayOffset = (date.getDay() + 6) % 7
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 3 - mondayOffset)
+}
+
 /** Local YYYY-MM-DD, the key everything in the calendar is grouped by. */
 export function dateKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')

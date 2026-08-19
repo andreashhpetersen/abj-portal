@@ -1,5 +1,6 @@
+import { Fragment } from 'react'
 import type { BookingEvent } from '../api/bookings'
-import { WEEKDAYS, dateKey, formatMonth, isSameMonth, monthGrid } from '../lib/dates'
+import { WEEKDAYS, dateKey, formatMonth, isSameMonth, isoWeek, monthGrid } from '../lib/dates'
 
 interface Props {
   month: Date
@@ -41,13 +42,14 @@ export function MonthGrid({ month, selected, eventsByDay, onSelect, onChangeMont
       </header>
 
       <div className="calendar__weekdays" aria-hidden="true">
+        <span className="calendar__week-heading">uge</span>
         {WEEKDAYS.map((weekday) => (
           <span key={weekday}>{weekday}</span>
         ))}
       </div>
 
       <div className="calendar__grid">
-        {days.map((day) => {
+        {days.map((day, index) => {
           const key = dateKey(day)
           const dayEvents = eventsByDay.get(key) ?? []
           const classes = [
@@ -60,26 +62,36 @@ export function MonthGrid({ month, selected, eventsByDay, onSelect, onChangeMont
             .join(' ')
 
           return (
-            <button
-              type="button"
-              key={key}
-              className={classes}
-              onClick={() => onSelect(key)}
-              aria-pressed={key === selected}
-              aria-label={`${day.getDate()}. ${formatMonth(day)}, ${dayEvents.length} booking(er)`}
-            >
-              <span className="calendar__date">{day.getDate()}</span>
-              <span className="calendar__dots">
-                {dayEvents.slice(0, 3).map((event) => (
-                  <span
-                    key={event.id}
-                    className={`dot dot--${event.category}`}
-                    title={event.category === 'public' ? event.title : 'Privat booking'}
-                  />
-                ))}
-                {dayEvents.length > 3 && <span className="calendar__more">+{dayEvents.length - 3}</span>}
-              </span>
-            </button>
+            <Fragment key={key}>
+              {/* The grid is a flat list of cells, so each Monday is preceded by
+                  the week number that labels its row. */}
+              {index % 7 === 0 && (
+                <span className="calendar__week" title={`Uge ${isoWeek(day)}`}>
+                  {isoWeek(day)}
+                </span>
+              )}
+              <button
+                type="button"
+                className={classes}
+                onClick={() => onSelect(key)}
+                aria-pressed={key === selected}
+                aria-label={`${day.getDate()}. ${formatMonth(day)}, uge ${isoWeek(day)}, ${dayEvents.length} booking(er)`}
+              >
+                <span className="calendar__date">{day.getDate()}</span>
+                <span className="calendar__dots">
+                  {dayEvents.slice(0, 3).map((event) => (
+                    <span
+                      key={event.id}
+                      className={`dot dot--${event.category}`}
+                      title={event.category === 'public' ? event.title : 'Privat booking'}
+                    />
+                  ))}
+                  {dayEvents.length > 3 && (
+                    <span className="calendar__more">+{dayEvents.length - 3}</span>
+                  )}
+                </span>
+              </button>
+            </Fragment>
           )
         })}
       </div>
