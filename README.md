@@ -216,6 +216,20 @@ Expect a few seconds of downtime while the container is replaced. Rolling
 that to zero needs a second app node and a load balancer, which the launch
 scope does not justify.
 
+**Rolling back.** Superseded images are kept on the server for three days, so a
+bad release can be undone without waiting for a build. On the server:
+
+```bash
+cd /opt/abj-portal
+docker image ls --filter label=app=abj-portal   # find the previous SHA tag
+sed -i '/^PORTAL_IMAGE=/d' .env
+echo "PORTAL_IMAGE=ghcr.io/<owner>/<repo>:<previous-sha>" >> .env
+docker compose up -d
+```
+
+That reverts the code, not the database. A release whose migration cannot be
+undone has to be fixed forward.
+
 ### First-time server setup
 
 1. Create the cloud server and the Managed PostgreSQL instance, and point the
