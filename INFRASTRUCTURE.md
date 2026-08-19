@@ -248,10 +248,11 @@ elsewhere.
 
 ## Before committing
 
-1. **Confirm Managed Databases are available in `dk-cph1`.** The launch
-   announcement lists cloud servers and Kubernetes explicitly but not
-   managed databases. If they are not there yet, Helsinki or Stockholm
-   works — the Copenhagen argument is then simply unavailable.
+1. ~~Confirm Managed Databases are available in `dk-cph1`.~~ **Confirmed** —
+   Managed PostgreSQL is offered in Copenhagen, so the Danish-residency
+   argument holds and both the database and the server live in `dk-cph1`.
+   Provisioned as PostgreSQL 18, 1 core, 2 GiB memory, 50 GiB storage,
+   single node, with public access disabled.
 2. **Obtain the databehandleraftale and sub-processor list** from both
    UpCloud and Scaleway before any real resident data is migrated.
 3. **Verify current pricing.** The figures above are indicative.

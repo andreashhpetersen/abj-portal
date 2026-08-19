@@ -30,7 +30,10 @@
 set -euo pipefail
 
 ENV_FILE=${ENV_FILE:-/opt/abj-portal/.env}
-POSTGRES_IMAGE=${POSTGRES_IMAGE:-postgres:17-alpine}
+# Must be at least the major version of the managed database (currently 18).
+# pg_dump refuses to run against a server newer than itself, so this pin has to
+# be raised before the database is upgraded, not after.
+POSTGRES_IMAGE=${POSTGRES_IMAGE:-postgres:18-alpine}
 BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-90}
 # A dump this small means the dump failed rather than that the portal is quiet.
 MIN_DUMP_BYTES=${MIN_DUMP_BYTES:-4096}
