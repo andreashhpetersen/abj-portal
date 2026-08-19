@@ -95,9 +95,9 @@ entry tier is an honest fit for one association's booking calendar.
 **A Danish region.** UpCloud opened `dk-cph1` on 16 December 2025, in
 Ballerup, roughly 15 km from central Copenhagen. It runs on 100% renewable
 power and feeds its waste heat into the local district heating network. For
-a Danish andelsboligforening storing its own residents' data, that is
-easier to justify to a general assembly than a datacentre in Paris, and it
-reads as a direct hit on the brief's "socially responsible" wording.
+AB Jæger, storing its own residents' data, that is easier to justify to a
+general assembly than a datacentre in Paris, and it reads as a direct hit on
+the brief's "socially responsible" wording.
 
 **No lock-in.** Plain VMs, standard PostgreSQL, S3-compatible object
 storage. If UpCloud were ever acquired by a US company — a real risk for a
@@ -221,10 +221,10 @@ live, the SMTP settings and `DEFAULT_FROM_EMAIL` belong in
 ## Room to grow
 
 The load ceiling for a single andelsboligforening sits far below the point
-where the choice of provider starts to matter — even with every household
-active daily, this is one mid-size VM and a managed database. Compute is not
-the constraint, so growth is a question of which services are available
-rather than whether the platform can keep up.
+where the choice of provider starts to matter — even with every AB Jæger
+household active daily, this is one mid-size VM and a managed database.
+Compute is not the constraint, so growth is a question of which services are
+available rather than whether the platform can keep up.
 
 UpCloud has the pieces the portal would reach for:
 

@@ -1,6 +1,7 @@
 # Beboerportal
 
-Web app for an *andelsboligforening* (Danish housing cooperative). Two planned
+Web app for **AB Jæger**, a Danish *andelsboligforening* (housing cooperative)
+whose flats span several blocks across more than one street. Two planned
 features: booking of the community room, and handling of shop-rental
 applications for the business committee.
 
@@ -88,9 +89,9 @@ other database, their resident number (`1-2345-6789-0`), and their flat.
 Employees and third-party managers get a `User` with no `Resident`, so any code
 touching an address must handle its absence.
 
-Addresses are structured: `Building` holds a street and house number (the
-association covers several blocks across more than one street) and `Resident`
-adds floor and door. Both are managed in the admin — create the buildings once,
+Addresses are structured: `Building` holds a street and house number (AB Jæger
+spans several blocks, so a street name alone does not identify a flat) and
+`Resident` adds floor and door. Both are managed in the admin — create the buildings once,
 then residency is edited inline on each user.
 
 ## Booking the community room
@@ -163,7 +164,7 @@ is intentional.
 ## Deployment
 
 The target is **UpCloud** — a single cloud server plus Managed PostgreSQL —
-with Proton for the association's mailboxes and Scaleway Transactional Email
+with Proton for AB Jæger's own mailboxes and Scaleway Transactional Email
 for mail the portal sends itself. `INFRASTRUCTURE.md` records why, including
 what was rejected and what still needs verifying.
 
