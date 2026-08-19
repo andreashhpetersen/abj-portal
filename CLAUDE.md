@@ -41,6 +41,13 @@ npm run build       # typecheck + production bundle into dist/
 
 Both dev servers must run for the SPA to work.
 
+Deployment checks (from the repo root, Docker available):
+
+```bash
+docker build -f deploy/Dockerfile -t abj-portal .
+./deploy/smoke.sh http://127.0.0.1:8011   # against a running container
+```
+
 ## Architecture
 
 **Settings are split three ways.** `config/settings/base.py` holds everything
@@ -157,6 +164,51 @@ running past midnight appears on both days.
 **The server decides permissions, the UI reflects them.** Each event carries
 `can_cancel`, `is_attending` and `attendee_count`, so components render from
 those rather than recomputing ownership rules client-side.
+
+**Hosting is settled: UpCloud, Proton, Scaleway.** `INFRASTRUCTURE.md` records
+the decision and, more usefully, what was rejected and why — the criterion is
+European *ownership*, not merely European data residency, so DigitalOcean and
+anything else under the US CLOUD Act is out. Don't reopen it casually; do read
+it before adding a third-party service, because a US-hosted mailer or monitor
+would quietly undo the whole point.
+
+**Production runs one process for everything.** gunicorn serves the API and the
+admin, and WhiteNoise serves the built SPA from the same process, so the browser
+sees a single origin and the session and CSRF cookies behave exactly as they do
+behind the Vite proxy. Caddy terminates TLS in front of it. `SERVE_SPA` gates
+the SPA half — off in development, where Vite owns the frontend. See `README.md`
+under *Deployment* for the shape and the pipeline.
+
+**The SPA catch-all must keep excluding Django's own prefixes.** The last entry
+in `config/urls.py` is `^(?!api/|admin/|static/).*$`. Without that lookahead a
+mistyped API path answers `200` with HTML instead of `404` with JSON, and the
+admin disappears behind the calendar. Simplifying the regex is the single
+easiest way to break production silently.
+
+**`index.html` is streamed, not rendered as a template, and never cached.** It
+is Vite's output, so running it through the Django template engine would give
+meaning to whatever brace sequences a future plugin emits. It is served
+`no-cache` because it names the hashed asset bundles — a cached copy points at
+files the next deployment has already replaced.
+
+**`/api/health/` is exempt from `SECURE_SSL_REDIRECT`.** The container's own
+`HEALTHCHECK` reaches gunicorn directly, so it arrives without
+`X-Forwarded-Proto`; without `SECURE_REDIRECT_EXEMPT` it gets redirected to a
+port nothing listens on and the container is declared unhealthy forever.
+
+**Deployment assertions live in `deploy/smoke.sh`, not inline in a workflow.**
+Three callers run it unchanged — CI against the freshly built image, the release
+workflow against production, and a developer against a local container. Add new
+expectations there so all three keep checking the same contract.
+
+**The database is managed and deliberately single-node.** A second node buys
+automatic failover, which a room-booking calendar does not need; what the portal
+does need is retention, and a single node only keeps three days of
+point-in-time recovery. `deploy/backup.sh` closes that gap with a nightly
+`pg_dump`, encrypted to a public key so the server can write backups but not
+read them back. The cheap plan is a considered trade, not an oversight —
+`INFRASTRUCTURE.md` has the reasoning, including the restore test that has to
+happen quarterly for any of it to mean anything.
 
 ## Open decisions
 

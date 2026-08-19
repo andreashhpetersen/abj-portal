@@ -1,6 +1,7 @@
 # Beboerportal
 
-Web app for an *andelsboligforening* (Danish housing cooperative). Two planned
+Web app for **AB Jæger**, a Danish *andelsboligforening* (housing cooperative)
+whose flats span several blocks across more than one street. Two planned
 features: booking of the community room, and handling of shop-rental
 applications for the business committee.
 
@@ -88,9 +89,9 @@ other database, their resident number (`1-2345-6789-0`), and their flat.
 Employees and third-party managers get a `User` with no `Resident`, so any code
 touching an address must handle its absence.
 
-Addresses are structured: `Building` holds a street and house number (the
-association covers several blocks across more than one street) and `Resident`
-adds floor and door. Both are managed in the admin — create the buildings once,
+Addresses are structured: `Building` holds a street and house number (AB Jæger
+spans several blocks, so a street name alone does not identify a flat) and
+`Resident` adds floor and door. Both are managed in the admin — create the buildings once,
 then residency is edited inline on each user.
 
 ## Booking the community room
@@ -162,14 +163,102 @@ is intentional.
 
 ## Deployment
 
-Not set up yet. The intended target is DigitalOcean App Platform with managed
-Postgres:
+The target is **UpCloud** — a single cloud server plus Managed PostgreSQL —
+with Proton for AB Jæger's own mailboxes and Scaleway Transactional Email
+for mail the portal sends itself. `INFRASTRUCTURE.md` records why, including
+what was rejected and what still needs verifying.
 
-* Routing: `/api`, `/admin` and `/static` must reach Django; everything else
-  falls through to the SPA's `index.html`, since the frontend owns its own
-  routes
-* API: `gunicorn config.wsgi` with `DJANGO_SETTINGS_MODULE=config.settings.prod`
-* Static files: collected by WhiteNoise (`python manage.py collectstatic`)
-* SPA: `npm run build`, served as a static site on the same domain so no CORS
-  exemption is needed
-* Release phase: `python manage.py migrate`
+Nothing is provisioned yet; the pipeline below is written and unexercised.
+
+### Shape
+
+One image holds both halves of the app. Gunicorn serves the API and the
+admin, and WhiteNoise serves the SPA bundle from the same process, so the
+browser sees a single origin and the session and CSRF cookies behave exactly
+as they do behind the Vite proxy in development. Caddy terminates TLS in
+front of it and renews certificates by itself, which is why no managed load
+balancer is needed at this size. The database is UpCloud's, reached through
+`DATABASE_URL`.
+
+```
+Caddy (TLS, :443) ──> gunicorn ──> UpCloud Managed PostgreSQL
+                        │
+                        ├─ /api/, /admin/  Django
+                        ├─ /static/        WhiteNoise (admin + DRF assets)
+                        └─ everything else SPA bundle, index.html fallback
+```
+
+The catch-all lives in `config/urls.py` behind the `SERVE_SPA` setting, and
+excludes `api/`, `admin/` and `static/` — without that exclusion a missing
+API route would answer `200` with HTML instead of `404` with JSON.
+
+| File                         | Purpose                                  |
+| ---------------------------- | ---------------------------------------- |
+| `deploy/Dockerfile`          | Builds the SPA, then the app image       |
+| `deploy/docker-compose.yml`  | The stack as it runs on the server       |
+| `deploy/Caddyfile`           | TLS and reverse proxy                    |
+| `deploy/backup.sh`           | Nightly encrypted `pg_dump` off-server   |
+| `deploy/smoke.sh`            | Asserts a running portal serves properly |
+| `.github/workflows/ci.yml`   | Checks on pull requests                  |
+| `.github/workflows/deploy.yml`| Test, build, release on push to `main`   |
+
+### Pipeline
+
+`deploy.yml` runs the same lint, test and typecheck jobs CI runs, and only
+then builds. It pushes the image to ghcr.io tagged with the commit SHA, pins
+that tag in the server's `.env`, runs `migrate` against the new image as a
+release phase — a failure there aborts with the old container still serving —
+brings the stack up, and polls `/api/health/` until it answers. Releases are
+serialised and never cancelled mid-flight, since a half-finished deploy can
+leave migrations applied against the previous image.
+
+Expect a few seconds of downtime while the container is replaced. Rolling
+that to zero needs a second app node and a load balancer, which the launch
+scope does not justify.
+
+### First-time server setup
+
+1. Create the cloud server and the Managed PostgreSQL instance, and point the
+   portal's DNS record at the server.
+2. Install Docker, plus `age` and `rclone` for backups.
+3. `docker login ghcr.io` with a token carrying `read:packages`, so the
+   server can pull the image.
+4. Create `/opt/abj-portal/` holding `docker-compose.yml`, `Caddyfile`,
+   `backup.sh` and a `.env` built from `.env.example`.
+5. Schedule the backup: `17 3 * * *  /opt/abj-portal/backup.sh`, with cron
+   mail going somewhere a person reads.
+6. Add the repository secrets and variable listed at the top of
+   `.github/workflows/deploy.yml`, then push to `main`.
+
+**Restore-test the backups quarterly.** The database runs on a single node
+with three days of point-in-time recovery, and the nightly dump is what
+covers anything older. An untested dump is not a backup — `deploy/backup.sh`
+documents the restore.
+
+### Smoke-testing the image locally
+
+Worth doing before the first real deploy, since this exercises the single-origin
+arrangement and the SPA fallback that `runserver` never sees. Port 8011 rather
+than 8000, so it does not collide with a dev server you have running:
+
+```bash
+docker build -f deploy/Dockerfile -t abj-portal .
+docker run -d --name portal-smoke -p 8011:8000 \
+  -e DJANGO_SECRET_KEY=local-smoke-test \
+  -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+  -e DATABASE_URL=sqlite:////tmp/smoke.sqlite3 \
+  -e DJANGO_SECURE_SSL_REDIRECT=False \
+  abj-portal
+
+./deploy/smoke.sh http://127.0.0.1:8011
+docker rm -f portal-smoke
+```
+
+`deploy/smoke.sh` is the same script CI runs against the built container and the
+release workflow runs against production, so all three check the same things. It
+waits for the app to answer, then asserts the routes that are easy to break: the
+SPA shell and a client-side route both reaching `index.html`, an unknown `/api/`
+path still returning `404` rather than HTML, and `/admin/` staying reachable.
+
+`DJANGO_SECURE_SSL_REDIRECT` exists for exactly this and nothing else — leave it
+alone on a real deployment.

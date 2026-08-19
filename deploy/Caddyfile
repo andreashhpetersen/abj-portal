@@ -1,0 +1,21 @@
+# Caddy terminates TLS and proxies everything to gunicorn. It certificates the
+# domain from Let's Encrypt on first boot and renews on its own, which is why no
+# managed load balancer is needed at this size.
+#
+# Everything is proxied — the API, the admin and the SPA alike — because the app
+# container serves all three. Splitting static file serving out to Caddy would
+# mean shipping the bundle to two places.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$PORTAL_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy app:8000
+
+	log {
+		output stdout
+	}
+}

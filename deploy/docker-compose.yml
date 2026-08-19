@@ -1,0 +1,51 @@
+# Production stack for a single UpCloud cloud server. The database is not here
+# on purpose — it is UpCloud's Managed PostgreSQL, reached through DATABASE_URL,
+# so that backups and version upgrades are not this server's problem.
+#
+# Lives on the server at /opt/abj-portal/ alongside a .env holding the real
+# secrets. Compose reads that same .env both for the ${...} values below and as
+# the app container's environment.
+#
+#   docker compose pull && docker compose up -d
+
+name: abj-portal
+
+services:
+  app:
+    image: ${PORTAL_IMAGE:?set PORTAL_IMAGE in .env}
+    restart: unless-stopped
+    env_file: [.env]
+    # No published port: only Caddy may reach gunicorn.
+    expose: ["8000"]
+    networks: [internal]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PORTAL_DOMAIN: ${PORTAL_DOMAIN:?set PORTAL_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates must survive a redeploy, or Let's Encrypt rate-limits kick
+      # in after a few restarts.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+    networks: [internal]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+networks:
+  internal:
+
+volumes:
+  caddy_data:
+  caddy_config:

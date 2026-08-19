@@ -1,0 +1,22 @@
+# The build context is the repository root, so that one image can hold both the
+# Django app and the SPA bundle built from `frontend/`.
+
+.git/
+.github/
+**/node_modules/
+frontend/dist/
+backend/staticfiles/
+backend/media/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.sqlite3
+.env
+.env.*
+!.env.example
+deploy/
+*.md
+.idea/
+.vscode/
+.DS_Store
