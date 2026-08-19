@@ -55,3 +55,80 @@ jobs:
       # `build` runs tsc --noEmit first, so this covers the typecheck too.
       - run: npm run build
         working-directory: frontend
+
+  image:
+    name: Image — build and smoke-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Not pushed anywhere: this only proves the image builds and boots.
+      # Shares the build cache with deploy.yml, so a release after a green
+      # pull request mostly reuses these layers.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          load: true
+          tags: abj-portal:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start the container
+        run: |
+          docker run -d --name portal-ci -p 8000:8000 \
+            -e DJANGO_SECRET_KEY=ci-smoke-test \
+            -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+            -e DATABASE_URL=sqlite:////tmp/ci.sqlite3 \
+            -e DJANGO_SECURE_SSL_REDIRECT=False \
+            abj-portal:ci
+
+      # A build-only check would pass on an image that boots straight into a
+      # crash loop, and would not notice the SPA fallback swallowing the API.
+      - name: Smoke-test what it serves
+        run: |
+          for _ in $(seq 30); do
+            curl -fsS --max-time 3 http://127.0.0.1:8000/api/health/ >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          fail=0
+          check() {
+            code=$(curl -s -o /tmp/body -w '%{http_code}' --max-time 5 "http://127.0.0.1:8000$1")
+            if [ "$code" = "$2" ]; then
+              printf 'ok   %-24s %s  %s\n' "$1" "$code" "$3"
+            else
+              printf 'FAIL %-24s %s (want %s)  %s\n' "$1" "$code" "$2" "$3"
+              fail=1
+            fi
+          }
+
+          check /api/health/         200 'health endpoint answers over plain HTTP'
+          check /                    200 'SPA shell'
+          check /booking/2026-08     200 'client-side route falls back to index.html'
+          check /api/does-not-exist/ 404 'unknown API route must NOT get the SPA'
+          check /admin/              302 'admin still reachable'
+
+          body=$(curl -s --max-time 5 http://127.0.0.1:8000/)
+          case $body in
+            *'id="root"'*) echo 'ok   index.html carries the React mount point' ;;
+            *) echo 'FAIL index.html is not the SPA shell'; fail=1 ;;
+          esac
+          case $body in
+            *'/assets/index-'*) echo 'ok   index.html links a hashed bundle' ;;
+            *) echo 'FAIL index.html links no built bundle'; fail=1 ;;
+          esac
+
+          exit $fail
+
+      - name: Container logs
+        if: failure()
+        run: docker logs portal-ci
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f portal-ci
