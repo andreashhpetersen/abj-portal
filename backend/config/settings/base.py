@@ -102,7 +102,29 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Where `npm run build` puts the SPA. In development the Vite dev server owns
+# these files and Django never sees them; in production one process serves both,
+# so there is a single origin and no CORS exemption. SERVE_SPA switches that on
+# — set it locally too if you want to check the real production bundle.
+SPA_DIST = REPO_ROOT / "frontend" / "dist"
+SERVE_SPA = env.bool("DJANGO_SERVE_SPA", default=False)
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Outgoing mail. The portal sends booking confirmations from its own subdomain
+# through a transactional provider, kept separate from the association's human
+# mailboxes so that automated sending cannot damage their reputation — see
+# INFRASTRUCTURE.md. Development overrides the backend to write to the console.
+EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env("DJANGO_EMAIL_HOST", default="")
+EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = env.int("DJANGO_EMAIL_TIMEOUT", default=10)
+DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="beboerportal@localhost")
+# Error mail to the admins uses this instead of DEFAULT_FROM_EMAIL.
+SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
 # The SPA authenticates with the session cookie it already has, so DRF only
 # needs session auth. Everything is private by default; endpoints that should
