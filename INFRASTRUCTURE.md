@@ -1,13 +1,13 @@
 # Infrastructure
 
-Where the portal is hosted, who sends its email, and why. This record
-supersedes the DigitalOcean plan still described in `README.md` under
-*Deployment* — that section is updated when the deployment scheme itself
-lands.
+Where the portal is hosted, who sends its email, and why. `README.md` under
+*Deployment* describes how a release reaches the server; this file records what
+was chosen, what was rejected, and what is actually running.
 
-Nothing here has been provisioned yet. Prices are indicative, checked
-August 2026, and should be verified against current list prices before
-budgeting.
+The database and application server exist — see *As provisioned* below. The
+prices quoted further down are indicative, checked August 2026, and were
+gathered before those plans were picked, so they read low. Confirm the real
+figure against the first invoice.
 
 ## Conclusion
 
@@ -36,6 +36,46 @@ Deliberately not bought at launch: a Managed Load Balancer (unnecessary for
 a single app node), a second database node (see *Sizing* below), and a
 separate staging database — local development runs on SQLite, which the
 default settings already do.
+
+## As provisioned
+
+Both live in `dk-cph1` — Ballerup, greater Copenhagen — so the application and
+its database sit in the same zone and talk over UpCloud's private network
+rather than the public internet.
+
+**Database — `abj-portal-db`**
+
+- Managed PostgreSQL 18, 1 core, 2 GiB memory, 50 GiB storage
+- Single node, so three days of point-in-time recovery. `deploy/backup.sh`
+  covers anything older; see *Sizing* for why that trade was made
+- Public access disabled. Nothing outside UpCloud can reach it, which is
+  sufficient because everything that touches it runs on the server: the app,
+  the nightly backup, and `migrate`, which the deploy workflow runs over SSH
+  rather than from the CI runner
+
+**Application server — `abj-portal-app`**
+
+- 1 vCPU, 2 GiB memory, 20 GB storage
+- Storage encrypted at rest, AES-256. Chosen at creation because UpCloud cannot
+  enable it afterwards — retrofitting means cloning to a new encrypted device
+
+The encryption is worth stating precisely, because it is the kind of control
+that gets over-claimed. It protects data at rest: decommissioned disks,
+snapshots, physical access to the hardware. The volume is transparently
+decrypted while the server runs, so it is no defence against a stolen SSH key
+or a root compromise. It earns its place because the server holds
+`/opt/abj-portal/.env` — database credentials, `DJANGO_SECRET_KEY`, the SMTP
+password — along with Caddy's TLS private keys and the nightly dump for the few
+seconds before `age` encrypts it.
+
+Two properties of this setup that are easy to forget later:
+
+- **Neither disk can be shrunk.** Growing either is a hot resize; shrinking
+  means a clone or a rebuild. Both were therefore sized with room to spare.
+- **`deploy/backup.sh` pins a `pg_dump` image matching the database's major
+  version.** `pg_dump` refuses to run against a newer server, so a database
+  upgrade means raising that pin first — otherwise the nightly backup stops
+  and says so only in cron mail.
 
 ## The requirement
 
