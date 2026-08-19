@@ -133,7 +133,16 @@ jobs:
           docker compose run --rm app python manage.py migrate --noinput
 
           docker compose up -d
-          docker image prune -f
+
+          # Reclaim superseded releases. Plain 'prune -f' would not: it only
+          # removes dangling images, and every release is tagged by SHA, so
+          # ~500MB accumulated per deploy until the disk filled. The label
+          # confines this to our own images, and 'until' leaves the last three
+          # days of releases in place to roll back to. The running image is in
+          # use, so it is never a candidate.
+          docker image prune -af \
+            --filter "label=app=abj-portal" \
+            --filter "until=72h"
           EOF
 
       # The same assertions CI ran against the container, now against the real

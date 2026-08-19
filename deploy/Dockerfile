@@ -27,6 +27,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DJANGO_SETTINGS_MODULE=config.settings.prod
 
+# Lets the deploy workflow reclaim old releases without touching unrelated
+# images on the server — notably the postgres image the nightly backup pulls.
+LABEL app="abj-portal"
+
 WORKDIR /app
 
 # psycopg is installed as the binary wheel, so no libpq or compiler is needed.
