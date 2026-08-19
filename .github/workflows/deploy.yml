@@ -136,19 +136,13 @@ jobs:
           docker image prune -f
           EOF
 
+      # The same assertions CI ran against the container, now against the real
+      # site. A green release therefore means more than "the process started".
       - name: Verify the deployment answers
         env:
           # The public domain, not DEPLOY_HOST: the certificate and Django's
           # ALLOWED_HOSTS are both bound to the name, not the address.
           DOMAIN: ${{ vars.PORTAL_DOMAIN }}
-        run: |
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if curl -fsS --max-time 10 "https://${DOMAIN}/api/health/" | grep -q '"ok"'; then
-              echo "healthy after ${attempt} attempt(s)"
-              exit 0
-            fi
-            echo "not healthy yet (attempt ${attempt}); retrying"
-            sleep 6
-          done
-          echo "health check never passed — investigate before pushing again" >&2
-          exit 1
+          # Generous, because the container has just been recreated.
+          READY_TIMEOUT: "60"
+        run: ./deploy/smoke.sh "https://${DOMAIN}"

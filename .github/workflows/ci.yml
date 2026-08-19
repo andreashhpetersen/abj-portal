@@ -89,41 +89,10 @@ jobs:
 
       # A build-only check would pass on an image that boots straight into a
       # crash loop, and would not notice the SPA fallback swallowing the API.
+      # The assertions live in deploy/smoke.sh so this job, the release workflow
+      # and a developer's terminal all run exactly the same ones.
       - name: Smoke-test what it serves
-        run: |
-          for _ in $(seq 30); do
-            curl -fsS --max-time 3 http://127.0.0.1:8000/api/health/ >/dev/null 2>&1 && break
-            sleep 1
-          done
-
-          fail=0
-          check() {
-            code=$(curl -s -o /tmp/body -w '%{http_code}' --max-time 5 "http://127.0.0.1:8000$1")
-            if [ "$code" = "$2" ]; then
-              printf 'ok   %-24s %s  %s\n' "$1" "$code" "$3"
-            else
-              printf 'FAIL %-24s %s (want %s)  %s\n' "$1" "$code" "$2" "$3"
-              fail=1
-            fi
-          }
-
-          check /api/health/         200 'health endpoint answers over plain HTTP'
-          check /                    200 'SPA shell'
-          check /booking/2026-08     200 'client-side route falls back to index.html'
-          check /api/does-not-exist/ 404 'unknown API route must NOT get the SPA'
-          check /admin/              302 'admin still reachable'
-
-          body=$(curl -s --max-time 5 http://127.0.0.1:8000/)
-          case $body in
-            *'id="root"'*) echo 'ok   index.html carries the React mount point' ;;
-            *) echo 'FAIL index.html is not the SPA shell'; fail=1 ;;
-          esac
-          case $body in
-            *'/assets/index-'*) echo 'ok   index.html links a hashed bundle' ;;
-            *) echo 'FAIL index.html links no built bundle'; fail=1 ;;
-          esac
-
-          exit $fail
+        run: ./deploy/smoke.sh http://127.0.0.1:8000
 
       - name: Container logs
         if: failure()

@@ -198,6 +198,7 @@ API route would answer `200` with HTML instead of `404` with JSON.
 | `deploy/docker-compose.yml`  | The stack as it runs on the server       |
 | `deploy/Caddyfile`           | TLS and reverse proxy                    |
 | `deploy/backup.sh`           | Nightly encrypted `pg_dump` off-server   |
+| `deploy/smoke.sh`            | Asserts a running portal serves properly |
 | `.github/workflows/ci.yml`   | Checks on pull requests                  |
 | `.github/workflows/deploy.yml`| Test, build, release on push to `main`   |
 
@@ -237,18 +238,27 @@ documents the restore.
 ### Smoke-testing the image locally
 
 Worth doing before the first real deploy, since this exercises the single-origin
-arrangement and the SPA fallback that `runserver` never sees:
+arrangement and the SPA fallback that `runserver` never sees. Port 8011 rather
+than 8000, so it does not collide with a dev server you have running:
 
 ```bash
 docker build -f deploy/Dockerfile -t abj-portal .
-docker run --rm -p 8000:8000 \
+docker run -d --name portal-smoke -p 8011:8000 \
   -e DJANGO_SECRET_KEY=local-smoke-test \
-  -e DJANGO_ALLOWED_HOSTS=localhost \
+  -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
   -e DATABASE_URL=sqlite:////tmp/smoke.sqlite3 \
   -e DJANGO_SECURE_SSL_REDIRECT=False \
   abj-portal
+
+./deploy/smoke.sh http://127.0.0.1:8011
+docker rm -f portal-smoke
 ```
 
-Then `http://localhost:8000/` serves the SPA and `/api/health/` answers JSON.
+`deploy/smoke.sh` is the same script CI runs against the built container and the
+release workflow runs against production, so all three check the same things. It
+waits for the app to answer, then asserts the routes that are easy to break: the
+SPA shell and a client-side route both reaching `index.html`, an unknown `/api/`
+path still returning `404` rather than HTML, and `/admin/` staying reachable.
+
 `DJANGO_SECURE_SSL_REDIRECT` exists for exactly this and nothing else — leave it
 alone on a real deployment.
