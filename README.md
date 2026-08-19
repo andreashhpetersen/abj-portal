@@ -249,6 +249,64 @@ with three days of point-in-time recovery, and the nightly dump is what
 covers anything older. An untested dump is not a backup — `deploy/backup.sh`
 documents the restore.
 
+### Bringing the server up before DNS is ready
+
+Caddy asks Let's Encrypt for a certificate the moment it boots with a domain in
+its site address, and Let's Encrypt rate-limits repeated failed challenges — so
+if the DNS record does not exist yet, do not point Caddy at the domain and hope.
+Serve plain HTTP against the server's IP instead. That exercises the registry
+pull, `migrate`, the compose stack and the whole routing contract, leaving only
+TLS untested, so when DNS lands there is one variable left rather than five.
+
+In `/opt/abj-portal/.env` on the server:
+
+```
+DJANGO_ALLOWED_HOSTS=<server ip>
+DJANGO_SECURE_SSL_REDIRECT=False
+PORTAL_IMAGE=ghcr.io/<owner>/<repo>:latest
+```
+
+Keep `PORTAL_DOMAIN` and `ACME_EMAIL` set even though Caddy will not read the
+domain in this mode: `docker-compose.yml` marks both required and refuses to
+start without them.
+
+In `/opt/abj-portal/Caddyfile`, replace the site address with a bare port:
+
+```
+:80 {
+```
+
+With no hostname there, Caddy skips automatic HTTPS altogether, so nothing is
+requested from Let's Encrypt and no rate limit is spent.
+
+Then, on the server:
+
+```bash
+cd /opt/abj-portal
+docker compose run --rm app python manage.py migrate
+docker compose up -d
+```
+
+And from a workstation, against the server's IP:
+
+```bash
+./deploy/smoke.sh http://SERVER_IP
+```
+
+**Logging in will not work over plain HTTP.** `prod.py` sets
+`SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE`, neither of which is
+env-overridable, so the browser withholds both cookies. `smoke.sh` does not
+authenticate, so its checks still pass — this is expected, not a fault to chase.
+
+When DNS is ready, undo it in this order:
+
+1. Delete `DJANGO_SECURE_SSL_REDIRECT=False` from `.env`. Leaving it behind is a
+   genuine security regression, not just untidiness
+2. Set `DJANGO_ALLOWED_HOSTS` to the domain
+3. Re-copy `Caddyfile` from the repository rather than editing it back, so the
+   server's copy cannot quietly drift
+4. `docker compose up -d`, then `./deploy/smoke.sh https://DOMAIN`
+
 ### Smoke-testing the image locally
 
 Worth doing before the first real deploy, since this exercises the single-origin
