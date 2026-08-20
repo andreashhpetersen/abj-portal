@@ -11,7 +11,15 @@ from .base import env
 
 DEBUG = False
 SECRET_KEY = env("DJANGO_SECRET_KEY")
-ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
+# The loopback is appended, never configured. The container's own HEALTHCHECK
+# reaches gunicorn directly rather than through Caddy, so it arrives with
+# `Host: 127.0.0.1:8000` — a name no real deployment would ever list. Without
+# this the probe answers 400 DisallowedHost and the container is reported
+# unhealthy forever, whatever the public hostname is. It is the same exception,
+# for the same reason, as SECURE_REDIRECT_EXEMPT below: the health check is not
+# a public request and must not be judged as one. Allowing it costs nothing —
+# only Caddy can reach gunicorn, and Caddy forwards the real Host.
+ALLOWED_HOSTS = [*env.list("DJANGO_ALLOWED_HOSTS"), "127.0.0.1"]
 
 DATABASES = {"default": env.db_url("DATABASE_URL")}
 

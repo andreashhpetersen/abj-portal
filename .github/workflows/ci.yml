@@ -78,14 +78,33 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ALLOWED_HOSTS deliberately lists only a public-style name. Listing
+      # 127.0.0.1 here too — as this once did — hides the fact that the
+      # container's HEALTHCHECK talks to gunicorn on the loopback: prod.py has
+      # to allow that itself, and a real deployment never lists it.
       - name: Start the container
         run: |
           docker run -d --name portal-ci -p 8000:8000 \
             -e DJANGO_SECRET_KEY=ci-smoke-test \
-            -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
+            -e DJANGO_ALLOWED_HOSTS=localhost \
             -e DATABASE_URL=sqlite:////tmp/ci.sqlite3 \
             -e DJANGO_SECURE_SSL_REDIRECT=False \
             abj-portal:ci
+
+      # The container's own verdict on itself, which smoke.sh cannot give: it
+      # goes through the front door, while the HEALTHCHECK goes straight to
+      # gunicorn. Production ran unhealthy for a fortnight without this.
+      - name: Wait for the container to report healthy
+        run: |
+          for _ in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' portal-ci)
+            [ "$status" = healthy ] && exit 0
+            [ "$status" = unhealthy ] && break
+            sleep 2
+          done
+          echo "container health: $status"
+          docker inspect -f '{{json .State.Health}}' portal-ci
+          exit 1
 
       # A build-only check would pass on an image that boots straight into a
       # crash loop, and would not notice the SPA fallback swallowing the API.
