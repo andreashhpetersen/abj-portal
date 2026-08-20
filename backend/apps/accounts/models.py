@@ -58,6 +58,19 @@ class UserManager(BaseUserManager):
             raise ValueError("Superuser must have is_superuser=True.")
         return self._create_user(email, password, **extra_fields)
 
+    def business_committee(self):
+        """Active users that `User.is_business_committee` is true for.
+
+        The property's rule expressed once in SQL, so a view needing the list of
+        committee members — to offer them as assignees, say — does not re-derive
+        it by naming the group inline. Deactivated accounts are left out: they
+        cannot log in, so offering them as an assignee only misleads.
+        """
+        return self.filter(
+            models.Q(groups__name=ERHVERVSUDVALG_GROUP) | models.Q(is_superuser=True),
+            is_active=True,
+        ).distinct()
+
 
 class User(AbstractUser):
     """Anyone who can log in.

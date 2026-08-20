@@ -25,6 +25,8 @@ from apps.bookings.models import (
     EventSeries,
     Frequency,
 )
+from apps.shoprentals.ingest import parse_rows, sync_sheet
+from apps.shoprentals.models import Application, ApplicationComment, ApplicationStatus
 
 User = get_user_model()
 
@@ -69,6 +71,7 @@ class Command(BaseCommand):
         buildings = self._create_buildings()
         people = self._create_people(buildings)
         self._create_bookings(people)
+        self._create_applications(people)
 
         BookingSettings.load()
 
@@ -82,6 +85,13 @@ class Command(BaseCommand):
             self.stdout.write(f"  {email:<24} {PASSWORD}   ({role})")
 
     def _reset(self):
+        # Only the demo applications. Deleting every one would destroy real
+        # applications synced from the form, and the committee's work on them.
+        # Demo-authored comments go first and by author, because a demo user who
+        # commented on a real application would otherwise block their own
+        # deletion — ApplicationComment.author is PROTECT.
+        ApplicationComment.objects.filter(author__email__endswith=DEMO_DOMAIN).delete()
+        Application.objects.filter(source_key__in=demo_application_keys()).delete()
         EventAttendance.objects.all().delete()
         Event.objects.all().delete()
         EventSeries.objects.all().delete()
@@ -215,3 +225,149 @@ class Command(BaseCommand):
             created_by=people["mette"],
         )
         cancelled.cancel(by=people["mette"])
+
+    def _create_applications(self, people):
+        """Shop-rental applications, seeded through the real ingest path.
+
+        Deliberately routed through `sync_sheet` rather than creating rows
+        directly: it exercises the header mapping, so the demo data proves the
+        ingestion works and the page has something to show without anyone having
+        to set up a Google service account first.
+        """
+        sync_sheet(DEMO_APPLICATION_HEADER, DEMO_APPLICATION_ROWS)
+
+        # Scoped to the demo rows. A developer may well have a real sheet synced
+        # into the same database, and those applications are not ours to restyle.
+        applications = list(
+            Application.objects.filter(source_key__in=demo_application_keys()).order_by(
+                "submitted_at"
+            )
+        )
+
+        # Spread across the workflow so the filter chips and the "how long has
+        # this been standing still" line both have something to show.
+        plan = [
+            (ApplicationStatus.FINISHED, 5, "chair"),
+            (ApplicationStatus.IN_PROGRESS, 4, "andreas"),
+            (ApplicationStatus.REJECTED, 1, None),
+            (ApplicationStatus.SAVED, 4, "andreas"),
+            (ApplicationStatus.REJECTED, 2, None),
+            (ApplicationStatus.NEW, None, None),
+        ]
+        for application, (status, rating, owner) in zip(applications, plan, strict=False):
+            application.set_status(status, save=False)
+            application.rating = rating
+            application.assignee = people[owner] if owner else None
+            application.save()
+
+        by_email = {application.email: application for application in applications}
+        for email, author, body in DEMO_APPLICATION_COMMENTS:
+            if email in by_email:
+                ApplicationComment.objects.create(
+                    application=by_email[email], author=people[author], body=body
+                )
+
+
+#: The demo form. A plausible shape for the association's own — including a
+#: multi-line question, since every heading in the real form has a description
+#: under its title, and a question the aliases do not know, since the form is
+#: expected to grow. Module level so `--reset` can identify exactly these rows.
+DEMO_APPLICATION_HEADER = [
+    "Tidsstempel",
+    "Navn\n(Fornavn(e) + Efternavn)",
+    "Mailadresse",
+    "Telefonnummer",
+    "Hvad vil du bruge lejemålet til?",
+    "Hvor mange m² har du brug for?",
+    "Fortæl kort om dig selv og din virksomhed",
+]
+
+DEMO_APPLICATION_ROWS = [
+    [
+        "02/08/2026 09.14.22",
+        "Mette Sørensen",
+        "mette@blomsterhjoernet.dk",
+        "+45 22 33 44 55",
+        "Blomsterbutik",
+        "60-80",
+        "Jeg har drevet blomsterbutik på Vesterbro i tolv år og leder efter "
+        "et mindre lejemål med gadeplan.",
+    ],
+    [
+        "05/08/2026 17.42.03",
+        "Kasper Lund",
+        "kasper@lundkaffe.dk",
+        "+45 26 11 09 88",
+        "Kaffebar med enkelt madudvalg",
+        "45",
+        "Vi er to, der vil åbne vores første kaffebar. Erfaring fra Coffee Collective.",
+    ],
+    [
+        "09/08/2026 21.05.51",
+        "Ahmed Karim",
+        "ahmed@karimtandpleje.dk",
+        "+45 31 88 21 40",
+        "Tandlægeklinik",
+        "120",
+        "Etableret klinik i Valby, som skal udvide med en afdeling mere.",
+    ],
+    [
+        "11/08/2026 08.31.17",
+        "Sofie Bang",
+        "sofie@bangyoga.dk",
+        "+45 28 74 63 12",
+        "Yogastudie",
+        "90",
+        "Underviser i dag på lejede timer og vil gerne have egne lokaler.",
+    ],
+    [
+        "14/08/2026 13.58.44",
+        "Henrik Toft",
+        "kontakt@toftvvs.dk",
+        "+45 40 12 76 55",
+        "Lager til VVS-firma",
+        "150",
+        "Har brug for lager og et lille kontor. Ingen kundebetjening fra adressen.",
+    ],
+    [
+        "18/08/2026 11.02.09",
+        "Line Damgaard",
+        "line@damgaardkeramik.dk",
+        "+45 23 45 67 89",
+        "Keramikværksted med butik",
+        "70",
+        "Værksted forrest og lille butik ud mod gaden. Åbent tre dage om ugen.",
+    ],
+]
+
+#: (applicant email, demo user key, comment body).
+DEMO_APPLICATION_COMMENTS = [
+    (
+        "kasper@lundkaffe.dk",
+        "andreas",
+        "Ringet 6/8. Rigtig god snak — de vil gerne se lejemålet i Jægergade.",
+    ),
+    (
+        "kasper@lundkaffe.dk",
+        "chair",
+        "Husk at spørge om de har finansieringen på plads inden vi går videre.",
+    ),
+    (
+        "sofie@bangyoga.dk",
+        "andreas",
+        "Ingen ledige lokaler i den størrelse lige nu. Gemt — hun er et godt match, "
+        "så vi tager fat når kælderen bliver fri.",
+    ),
+]
+
+
+def demo_application_keys():
+    """Source keys of the demo applications, derived exactly as the sync does.
+
+    This is what lets `--reset` delete the demo rows and nothing else. It matters
+    as soon as a real responses sheet has been synced into the same database:
+    wiping every application would take the committee's ratings, statuses and
+    comments with it, and those do not come back.
+    """
+    responses, _skipped = parse_rows(DEMO_APPLICATION_HEADER, DEMO_APPLICATION_ROWS)
+    return [response.source_key for response in responses]

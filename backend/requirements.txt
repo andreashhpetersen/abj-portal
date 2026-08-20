@@ -7,6 +7,12 @@ django-filter==25.2
 # Recurrence arithmetic: month-length clamping and DST-safe intervals.
 python-dateutil==2.9.0.post0
 
+# Reading the shop-rental form's responses sheet (apps/shoprentals/sheets.py).
+# Imported lazily there, so the portal runs without a Google setup — but the
+# sync command needs these, and production runs the sync.
+google-api-python-client==2.198.0
+google-auth==2.56.3
+
 # Production serving. Not needed for `runserver`, but importing config.settings.prod
 # requires whitenoise, so it stays in the base requirements.
 gunicorn==23.0.0

@@ -452,3 +452,365 @@ select {
 .hint--blocking {
   color: var(--color-error);
 }
+
+/* --- shop rentals (erhvervslejemål) -------------------------------------- */
+
+/* The same master-detail shape as the calendar: skim many, work on one. The
+   list column is the narrow one here, since an application's answers need the
+   room and its summary line does not. */
+.erhverv-page {
+  display: grid;
+  gap: var(--space);
+}
+
+@media (min-width: 62rem) {
+  .erhverv-page {
+    grid-template-columns: 22rem 1fr;
+    align-items: start;
+  }
+}
+
+.erhverv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.erhverv-list__count {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.erhverv-list__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: var(--space);
+}
+
+.filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.filters__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.filters__row label,
+.contract label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid #cfcdc5;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+.chip--on {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.chip__count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* A list row is a button so the whole card is one keyboard-reachable target. */
+.application-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  background: var(--color-surface);
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  color: var(--color-text);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.application-row:hover {
+  border-color: #d8d6ce;
+}
+
+.application-row--selected {
+  border-color: var(--color-accent);
+}
+
+.application-row__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.application-row__who {
+  font-weight: 600;
+}
+
+.application-row__summary {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  /* One line: the row is for skimming, and the detail panel has the rest. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.application-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+/* Status colours carry meaning, so they are not interchangeable: green for
+   concluded, amber for in hand, blue for deliberately parked, grey for filed. */
+.badge {
+  flex-shrink: 0;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  background: var(--color-bg);
+  color: var(--color-muted);
+}
+
+.badge--new {
+  background: #e6efe9;
+  color: #2f5d50;
+}
+
+.badge--in_progress {
+  background: #f6ecd9;
+  color: #8a5f1c;
+}
+
+.badge--saved {
+  background: #e4ecf4;
+  color: #2f4f6d;
+}
+
+.badge--rejected {
+  background: #f1e5e5;
+  color: #8a3a3a;
+}
+
+.badge--finished {
+  background: #e8e8e4;
+  color: #55554e;
+}
+
+.stars {
+  display: inline-flex;
+  gap: 0.05rem;
+  line-height: 1;
+}
+
+.star {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #d3d1c8;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.stars--static .star {
+  cursor: default;
+  font-size: 0.8rem;
+}
+
+.star--on {
+  color: #c9962b;
+}
+
+/* --- one application ----------------------------------------------------- */
+
+.application__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.application__who {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.application__contact,
+.application__submitted {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.application__contact a {
+  color: inherit;
+}
+
+.application__controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 1rem 0 0.25rem;
+}
+
+.application__controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0 0.75rem;
+  border-bottom: 1px solid #e2e0da;
+}
+
+.tab {
+  background: transparent;
+  color: var(--color-muted);
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0.4rem 0.2rem;
+  font-size: 0.9rem;
+}
+
+.tab--on {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+/* The answers are rendered from whatever the form sent, so this has to cope
+   with a question of any length and any number of them. */
+.answers {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.answers__item dt {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+/* The help text under a form question's title. Kept clearly subordinate: on
+   this form it can run to a paragraph of instructions, and it must not compete
+   with the question or the answer. */
+.answers__note {
+  display: block;
+  max-width: 46rem;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: #8a887f;
+  white-space: pre-line;
+}
+
+.answers__item dd {
+  margin: 0.1rem 0 0;
+  white-space: pre-wrap;
+}
+
+/* --- contract details ---------------------------------------------------- */
+
+.contract {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contract__grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+@media (min-width: 40rem) {
+  .contract__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.contract__ready {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-accent);
+}
+
+.contract__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* --- comments ------------------------------------------------------------ */
+
+.comments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e0da;
+}
+
+.comments h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.comment {
+  border-left: 3px solid #e2e0da;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+}
+
+.comment__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.comment__body {
+  margin: 0.15rem 0 0;
+  white-space: pre-wrap;
+}
+
+.comment__delete {
+  padding: 0;
+  background: transparent;
+  color: var(--color-error);
+  font-size: 0.75rem;
+}

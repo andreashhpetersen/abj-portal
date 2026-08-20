@@ -132,6 +132,27 @@ export function formatTimeRange(startIso: string, endIso: string): string {
   return `${formatTime(startIso)}–${end}${sameDay ? '' : ' (næste dag)'}`
 }
 
+/** A date on one line, e.g. "20. aug. 2026". For lists, where the time of day
+ *  an application arrived is noise. */
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('da-DK', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+/** Whole days since an instant, counted in local calendar days like
+ *  `daysFromToday` — so "i gang i 47 dage" does not tick over at an hour that
+ *  depends on when the status happened to change. */
+export function daysSince(iso: string): number {
+  const then = new Date(iso)
+  const start = new Date(then.getFullYear(), then.getMonth(), then.getDate())
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((today.getTime() - start.getTime()) / 86_400_000)
+}
+
 export function formatDayLong(date: Date): string {
   return date.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })
 }

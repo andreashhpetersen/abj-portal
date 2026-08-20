@@ -143,6 +143,203 @@ matching anything that overlaps the window), plus `?category=` and
 Deleting is admin-only by design: everyone else cancels, which keeps the record
 of who had booked and why the slot came free.
 
+## Shop-rental applications (erhvervslejemål)
+
+Candidates apply through a public **Google Form**. The portal reads the form's
+responses sheet on a timer and gives the erhvervsudvalg somewhere to work on what
+arrives: a status, a 1–5 rating, comments, an assignee, and a place to collect
+the concrete facts a lease needs.
+
+Nobody outside the erhvervsudvalg can see any of it.
+
+### The workflow
+
+Five statuses, and the reason each exists:
+
+| Status               | Means                                                  |
+| -------------------- | ------------------------------------------------------ |
+| **Ny**               | Arrived, nobody has looked at it. The default.          |
+| **I gang**           | Someone is in contact. Routinely lasts months.         |
+| **Gemt til senere**  | Good applicant, no vacant unit to offer. Come back to it. |
+| **Afvist**           | Not interesting. Filed, not deleted.                   |
+| **Afsluttet**        | Done with — contract signed or otherwise concluded.     |
+
+*Gemt til senere* is the one that makes the list worth keeping: there is usually
+nothing free to offer a good applicant at the moment they apply. Nothing is ever
+deleted, so an applicant reappearing next year is recognisable.
+
+An unrated application is not the same as a one-star one, so the rating is empty
+until someone sets it, and clicking the current rating clears it again. Status
+changes are timestamped, so the UI can say *gemt til senere i 47 dage* — the
+committee's own complaint is that this stage drags.
+
+### Ingestion
+
+`apps/shoprentals/ingest.py` maps a sheet into applications; `sheets.py` is the
+only code that talks to Google.
+
+    python manage.py sync_applications
+    python manage.py sync_applications --dry-run   # parse and report, write nothing
+
+**Polling, not a webhook, and reconciling rather than replaying.** Every run
+reads the whole sheet and upserts. A failed run, a deploy mid-run, a fortnight of
+downtime or a cell corrected by hand in the sheet all sort themselves out on the
+next pass — which is worth much more here than seconds-fresh delivery, given that
+these applications take weeks to become contracts.
+
+**The form is expected to change, so the schema does not mirror it.** Every
+answer is stored verbatim and in order, and the UI renders whatever arrives. Only
+the three fields the committee filters and searches on — name, email, phone — are
+lifted into columns, by the alias table `HEADER_ALIASES` in `ingest.py`. That
+table is the *only* place a form change needs reflecting: a brand-new question
+costs nothing at all, and a reworded contact question still stores its answer,
+leaves the column blank, and makes the sync command say so on stderr.
+
+**A sync never touches the committee's work.** It writes only the applicant's own
+fields. Status, rating, assignee, comments and contract details are not ours to
+move, and a sync that reset a rating would be one nobody could safely run. Rows
+that vanish from the sheet keep their applications, which by then may carry
+months of notes.
+
+Identity comes from a digest of the submission's timestamp and email, because a
+responses sheet has no id of its own and a row number would re-point every key
+below it the moment someone sorted the sheet. The consequence: correct an
+applicant's email *in the portal*, not in the sheet — changing it upstream files
+the next sync as a new application.
+
+### Setting up the Google side
+
+1. In Google Cloud, create a project and enable the **Google Sheets API**.
+2. Create a **service account**, no roles needed, and download a JSON key.
+3. Open the form's responses spreadsheet and **share it, read-only, with the
+   service account's email address** — that share is the only thing granting
+   access, and it reaches no other file in the Drive.
+4. **Get the new build and the new compose file onto the server first.** Two
+   things the earlier steps do not do for you:
+
+   * The image must contain `google-api-python-client`, which means deploying a
+     build from after this feature landed — push to `main` and let the release
+     workflow run.
+   * `docker-compose.yml` gained the `./secrets` mount, and **the deploy workflow
+     does not copy it**. It only sets `PORTAL_IMAGE`, pulls and restarts, so
+     `/opt/abj-portal/docker-compose.yml` is whatever was placed there by hand
+     during *First-time server setup*. Copy the new one over and recreate the
+     container, or the key will not exist inside it:
+
+         scp deploy/docker-compose.yml <user>@<host>:/opt/abj-portal/
+         ssh <user>@<host> 'cd /opt/abj-portal && docker compose up -d'
+
+   The same applies to any later change to `docker-compose.yml`, `Caddyfile` or
+   `backup.sh`.
+5. Put the key on the server at `/opt/abj-portal/secrets/google-sheets.json`.
+   `docker-compose.yml` bind-mounts that directory read-only at
+   `/run/secrets/abj`, so the path the app sees is not the path on the host.
+   The container runs as uid 10001, so make the key readable by it:
+
+       sudo install -d -m 755 /opt/abj-portal/secrets
+       sudo install -o 10001 -g 10001 -m 400 ~/google-sheets.json \
+            /opt/abj-portal/secrets/google-sheets.json
+
+   Then in `/opt/abj-portal/.env`:
+
+       SHOPRENTALS_SHEET_ID=<the spreadsheet id from its URL>
+       SHOPRENTALS_GOOGLE_CREDENTIALS=/run/secrets/abj/google-sheets.json
+       SHOPRENTALS_SHEET_RANGE=A:ZZ   # optional; the default reads the first sheet
+
+   All three default to empty, so a checkout with no Google setup still boots and
+   tests — `sync_applications` fails with a clear message instead. The mount is a
+   directory rather than the file itself for the same reason: the stack starts
+   whether or not a key is there.
+
+   Locally, point `SHOPRENTALS_GOOGLE_CREDENTIALS` straight at wherever you
+   saved the key — there is no container in the way.
+6. Check it end to end before scheduling anything:
+
+       docker compose run --rm --no-deps app \
+           python manage.py sync_applications --dry-run
+
+   That reads the sheet, reports how many responses it parsed and warns about
+   anything it could not map, and writes nothing. Drop `--dry-run` once it looks
+   right.
+7. Run it on a timer. Every five minutes is plenty:
+
+       # /etc/systemd/system/abj-sync-applications.service
+       [Unit]
+       Description=Sync erhvervslejemål applications from Google Forms
+       After=docker.service
+       [Service]
+       Type=oneshot
+       WorkingDirectory=/opt/abj-portal
+       ExecStart=/usr/bin/docker compose run --rm --no-deps app \
+           python manage.py sync_applications
+
+       # /etc/systemd/system/abj-sync-applications.timer
+       [Unit]
+       Description=Sync erhvervslejemål applications every five minutes
+       [Timer]
+       OnBootSec=5min
+       OnUnitActiveSec=5min
+       [Install]
+       WantedBy=timers.target
+
+   Then `sudo systemctl enable --now abj-sync-applications.timer`. Compose reads
+   `/opt/abj-portal/.env` itself, so the unit needs no `EnvironmentFile`;
+   `--no-deps` keeps a sync from dragging Caddy up with it, and `run` rather than
+   `exec` means the sync still works when the app container is down.
+
+   Watch it with `journalctl -u abj-sync-applications.service -f`. A failed run
+   needs no intervention — the next one reads the whole sheet again.
+
+`SHOPRENTALS_SHEET_RANGE` deliberately carries no sheet name: Google names the
+responses tab by the form's locale, so "the first sheet" survives both
+*Formularsvar 1* and *Form Responses 1*.
+
+For local development, `python manage.py seed_demo` creates six applications
+through the real ingest path, so the page has something to show without any of
+the above.
+
+### Preparing the contract
+
+Each application has a *Kontraktoplysninger* record: CVR, legal form, contact
+person, which unit, what it may be used for, area, rent, deposit, wanted
+handover, and free-text notes. None of it comes from the form — the form asks
+only enough to judge whether someone is worth talking to, and the rest arrives
+over weeks of correspondence. So every field is optional and a half-filled record
+is the normal state, saved a field at a time.
+
+The API reports `missing_fields`, the labels of what is still outstanding, which
+the UI shows as a checklist. **Generating the document for the lawyer is not
+built** — the record is shaped so that it is a formatting job, but there is no
+export yet, and the field list is a starting point that should be reconciled with
+what the lawyer actually asks for.
+
+### API
+
+Every route requires membership of the erhvervsudvalg.
+
+| Method          | Path                                              |
+| --------------- | ------------------------------------------------- |
+| `GET`           | `/api/shop-rentals/applications/`                 |
+| `GET`           | `/api/shop-rentals/applications/summary/`         |
+| `GET`           | `/api/shop-rentals/applications/{id}/`            |
+| `PATCH`         | `/api/shop-rentals/applications/{id}/`            |
+| `GET`/`POST`    | `/api/shop-rentals/applications/{id}/comments/`   |
+| `DELETE`        | `/api/shop-rentals/comments/{id}/`                |
+| `GET`/`PATCH`   | `/api/shop-rentals/applications/{id}/details/`    |
+| `GET`           | `/api/shop-rentals/members/`                      |
+
+`PATCH` on an application accepts `status`, `rating` and `assignee_id` and
+nothing else: the applicant's answers are a record of what was submitted, and the
+sync would overwrite an edit anyway. There is no `POST` and no `DELETE` —
+applications exist because someone filled in the form.
+
+The list takes repeatable `?status=`, plus `?assignee=` (a member id or
+`unassigned`), `?min_rating=`, `?q=` and `?ordering=`. `?q=` searches the mapped
+fields *and* every answer, so a word from any question finds its application.
+Sorting by rating keeps unrated ones last in both directions. Comments may be
+deleted by their author or an admin, and cannot be edited — a months-long thread
+that can be rewritten afterwards is not a record.
+
 ## Access control
 
 * **Members** — anyone with an account. See the calendar.
@@ -160,6 +357,10 @@ Settings are split by environment. `manage.py` defaults to
 from environment variables (see `.env.example`) — production fails to boot if
 `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, or `DATABASE_URL` is missing, which
 is intentional.
+
+The three `SHOPRENTALS_*` variables are the exception to that rule: they default
+to empty on purpose, so the portal runs perfectly well with no Google setup and
+only `sync_applications` complains. See *Shop-rental applications* above.
 
 ## Deployment
 
