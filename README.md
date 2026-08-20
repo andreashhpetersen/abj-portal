@@ -234,11 +234,32 @@ the next sync as a new application.
 5. Put the key on the server at `/opt/abj-portal/secrets/google-sheets.json`.
    `docker-compose.yml` bind-mounts that directory read-only at
    `/run/secrets/abj`, so the path the app sees is not the path on the host.
-   The container runs as uid 10001, so make the key readable by it:
+   The container runs as uid 10001, so make the key readable by it. Set the
+   owner with `chown` rather than `install -o`: the user is called `portal`
+   inside the image and does not exist on the host at all, and some builds of
+   `install` reject a numeric `-o` outright (`invalid user: '10001'`) where
+   `chown` takes uids happily. The mode is 0400, owner-only, so the *group* does
+   not matter — which is just as well, since the image's `useradd` passes no
+   `--gid` and the group id is therefore not 10001.
 
        sudo install -d -m 755 /opt/abj-portal/secrets
-       sudo install -o 10001 -g 10001 -m 400 ~/google-sheets.json \
+       sudo install -m 400 ~/google-sheets.json \
             /opt/abj-portal/secrets/google-sheets.json
+       sudo chown 10001 /opt/abj-portal/secrets/google-sheets.json
+       ls -ln /opt/abj-portal/secrets/     # expect: -r-------- 1 10001 ...
+
+   `install` writes it 0400 from the start, so the key never sits on disk
+   world-readable between being copied and being locked down. Delete the copy in
+   your home directory afterwards — `shred -u ~/google-sheets.json`.
+
+   To avoid staging it in a home directory at all, stream it straight in when
+   logging in as root (no `sudo`, which would fight the key for stdin):
+
+       ssh root@HOST 'set -e
+       install -d -m 755 /opt/abj-portal/secrets
+       install -m 400 /dev/stdin /opt/abj-portal/secrets/google-sheets.json
+       chown 10001 /opt/abj-portal/secrets/google-sheets.json' \
+         < path/to/google-sheets.json
 
    Then in `/opt/abj-portal/.env`:
 
