@@ -77,6 +77,19 @@ HEADER_ALIASES = {
 #: both spellings.
 TIMESTAMP_HEADERS = ("tidsstempel", "timestamp")
 
+#: Questions that are plumbing rather than part of the application, matched the
+#: same way as everything else — on the question's title, normalised.
+#:
+#: `robotkontrol` is the form's arithmetic anti-spam question. Its answer says
+#: nothing about the applicant, and showing it on every application is noise in a
+#: panel whose whole job is being readable.
+#:
+#: Dropped at ingest rather than hidden in the UI, because it is not application
+#: data and does not belong in the database or the search index. That is safe to
+#: get wrong: every sync rewrites the answers, so deleting an entry here brings
+#: the column back on the next run.
+IGNORED_HEADERS = ("robotkontrol",)
+
 
 def normalise_header(header):
     """Fold a column heading to something matchable.
@@ -193,7 +206,8 @@ def parse_rows(header, rows, *, first_data_row=2):
 
     A row with no usable timestamp is skipped: without one there is no stable
     identity, and inventing one would mean the row arrives afresh on every sync.
-    Blank rows — the trailing emptiness every sheet has — are skipped silently.
+    Blank rows — the trailing emptiness every sheet has — are skipped silently,
+    as are the columns named in `IGNORED_HEADERS`.
     """
     columns = [normalise_header(cell) for cell in header]
     responses = []
@@ -217,7 +231,7 @@ def parse_rows(header, rows, *, first_data_row=2):
             if column in TIMESTAMP_HEADERS:
                 submitted_at = parse_timestamp(value)
                 continue
-            if not column:
+            if not column or column in IGNORED_HEADERS:
                 continue
             target = ALIAS_TO_FIELD.get(column)
             if target and not mapped[target]:

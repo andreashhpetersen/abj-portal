@@ -14,6 +14,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+from apps.shoprentals import ingest
 from apps.shoprentals.ingest import (
     normalise_header,
     parse_rows,
@@ -75,6 +76,42 @@ def test_a_contact_question_with_a_description_still_fills_its_column():
     assert response.phone == "12345678"
     # And the full heading, description included, is what gets displayed.
     assert response.answers[0]["question"] == "Navn\n(Fornavn(e) + Efternavn)"
+
+
+def test_the_forms_anti_spam_question_is_not_kept_as_an_answer():
+    """It says nothing about the applicant, so it is noise in the panel and in
+    the search index. Matched on its title like anything else."""
+    header = [*HEADER, "Robotkontrol\nHvad giver 3 og 4 lagt sammen?"]
+    responses, _skipped = parse_rows(header, [[*row(), "7"]])
+    (response,) = responses
+    assert all("Robotkontrol" not in item["question"] for item in response.answers)
+    assert all(item["value"] != "7" for item in response.answers)
+
+
+def test_dropping_a_column_does_not_drop_its_row(db):
+    """The rest of the application still arrives — and it stays searchable
+    without the ignored answer in the index."""
+    header = [*HEADER, "Robotkontrol"]
+    # A value nothing else in the row could contain: a bare "7" also appears in
+    # the phone number, which would make this assertion pass for the wrong reason.
+    result = sync_sheet(header, [[*row(), "robotsvar"]])
+    assert result.created == 1
+    application = Application.objects.get()
+    assert len(application.answers) == 4
+    assert "robotsvar" not in application.search_text
+
+
+def test_an_ignored_column_comes_back_when_the_entry_is_removed(db, monkeypatch):
+    """Reconciliation makes this reversible: nothing has to be re-imported by
+    hand if the committee decides they wanted the column after all."""
+    header = [*HEADER, "Robotkontrol"]
+    sync_sheet(header, [[*row(), "7"]])
+    assert len(Application.objects.get().answers) == 4
+
+    monkeypatch.setattr(ingest, "IGNORED_HEADERS", ())
+    result = sync_sheet(header, [[*row(), "7"]])
+    assert result.updated == 1
+    assert len(Application.objects.get().answers) == 5
 
 
 def test_two_questions_sharing_a_title_lift_only_the_first():
