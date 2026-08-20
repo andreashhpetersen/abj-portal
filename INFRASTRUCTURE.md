@@ -28,7 +28,7 @@ balancer:
 | -------------------------------------- | ----------------- |
 | Cloud server (1–2 vCPU)                | ~€5–7/month       |
 | Managed PostgreSQL, smallest single node| ~€8–12/month     |
-| Managed Object Storage for backups     | low, usage-based  |
+| Backup storage (see *Where backups go*)| nothing, for now  |
 | Scaleway Transactional Email           | low, usage-based  |
 | TLS certificates (Let's Encrypt)       | free              |
 
@@ -286,16 +286,94 @@ single-room assumption is deliberately isolated to `_clashing_events()`, so
 adding more bookable spaces stays cheap as long as it is not duplicated
 elsewhere.
 
+## Where backups go
+
+`deploy/backup.sh` needs somewhere to put its nightly encrypted dump. The
+destination is deliberately still open, and the reasoning matters more than the
+answer, because the obvious choice is the wrong one.
+
+**UpCloud Managed Object Storage was rejected.** Its minimum invoicing unit is
+250 GB and every instance is deployed at that size, so it would cost roughly
+€4–5/month to hold perhaps 100 MB of dumps. More importantly, backups sitting
+in the same account as the database are not off-site in any meaningful sense: a
+lost account — billing dispute, stolen credentials, a mistaken deletion — takes
+the database and its only copy together, which is precisely the failure the
+dump exists to survive.
+
+There is no security cost to storing them elsewhere. `backup.sh` encrypts to an
+age public key before uploading, so whoever holds the bytes holds ciphertext.
+Where they live is purely a resilience question.
+
+**Until real resident data exists, none of this is urgent.** A backup of an
+empty schema is theatre. The trigger is the first import of households — data
+nobody can re-derive, and which GDPR Article 32 explicitly requires be
+restorable.
+
+Options, cheapest first:
+
+- **A local directory on the server.** `BACKUP_REMOTE=/var/backups/abj-portal`
+  works with no change to the script, because rclone treats a plain path as a
+  local remote — same encryption, same 90-day pruning. It does not survive
+  losing the server, but it does cover the likelier disaster of data quietly
+  corrupted weeks ago, and moving off-site later is one variable.
+- **Proton Drive**, included in the Proton Business subscription bought for the
+  mailboxes. rclone has a Proton Drive backend, so this is off-provider at no
+  additional cost.
+- **Scaleway Object Storage**, on the account that exists for Transactional
+  Email. Verify whether the advertised 75 GB free allowance is a standing tier
+  or a three-month trial before relying on it.
+
+Note that *Room to grow* still names UpCloud Managed Object Storage, for
+document archives and resident uploads if the portal grows. That is not a
+contradiction: files the app serves want to be near the app, and backups want
+to be far from it.
+
 ## Before committing
 
 1. ~~Confirm Managed Databases are available in `dk-cph1`.~~ **Confirmed** —
    Managed PostgreSQL is offered in Copenhagen, so the Danish-residency
    argument holds and both the database and the server live in `dk-cph1`.
-   Provisioned as PostgreSQL 18, 1 core, 2 GiB memory, 50 GiB storage,
-   single node, with public access disabled.
-2. **Obtain the databehandleraftale and sub-processor list** from both
-   UpCloud and Scaleway before any real resident data is migrated.
+   Provisioned as PostgreSQL 18, 1 core, 2 GiB memory, 50 GiB storage, single
+   node, with public access disabled.
+2. **Obtain the databehandleraftale and sub-processor list** from both UpCloud
+   and Scaleway before any real resident data is migrated.
 3. **Verify current pricing.** The figures above are indicative.
+
+## Still to do
+
+Where provisioning actually stands, so this can be picked up cold.
+
+Working already: the database and server exist in `dk-cph1`; Docker, `age` and
+`rclone` are installed; `deploy/` is at `/opt/abj-portal/` with a real `.env`;
+and the stack has been proven end-to-end over plain HTTP against the server's
+IP — registry pull, `migrate` against the managed database, `compose up`, and
+all seven `deploy/smoke.sh` assertions passing. Only TLS is unproven.
+
+Remaining, in dependency order:
+
+1. **DNS.** Get access to the `ab-jaeger.dk` zone and add the portal's A
+   record. This is the only thing blocking TLS and the release workflow's
+   verify step. The same access is needed for the Proton mailbox migration (MX,
+   SPF, DKIM, DMARC), so one request unblocks both.
+2. **Undo the interim HTTP configuration** — `README.md`, *Bringing the server
+   up before DNS is ready*, has the ordered revert list. Leaving
+   `DJANGO_SECURE_SSL_REDIRECT=False` behind is a security regression.
+3. **Add the GitHub secrets** (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`,
+   `DEPLOY_KNOWN_HOSTS`) and the `PORTAL_DOMAIN` variable. A push to `main`
+   then performs a real deploy.
+4. **Tighten the database allowlist** to the server's utility-network IP,
+   testing connectivity before and after so a failure is unambiguous.
+5. **Harden the server**: swap, firewall limited to 22/80/443, confirm
+   `unattended-upgrades` is active, SSH keys only.
+6. **Choose a backup destination** (see *Where backups go*), fill the
+   `BACKUP_*` values, run `backup.sh` by hand once, then schedule it — and
+   restore-test it. Needed before the first real resident data, not before
+   launch.
+7. **Set up Scaleway Transactional Email** and the sending subdomain's SPF,
+   DKIM and DMARC records, before anything in the app sends mail.
+8. **Rotate the database password** if it has been copied anywhere off the
+   server, and consider a dedicated application role rather than `upadmin`,
+   which is the cluster administrator.
 
 ## Portability
 
