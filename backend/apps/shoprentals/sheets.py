@@ -53,9 +53,23 @@ def fetch_rows(spreadsheet_id=None, sheet_range=None, credentials_file=None):
             "The Google client libraries are not installed. Run `pip install -r requirements.txt`."
         ) from error
 
-    credentials = service_account.Credentials.from_service_account_file(
-        credentials_file, scopes=SCOPES
-    )
+    # The likeliest failures in production are a path that is right on the host
+    # but wrong inside the container, and a key the container's uid cannot read.
+    # Both deserve a sentence in the timer's log rather than a traceback.
+    try:
+        credentials = service_account.Credentials.from_service_account_file(
+            credentials_file, scopes=SCOPES
+        )
+    except OSError as error:
+        raise ImproperlyConfigured(
+            f"Cannot read the service-account key at {credentials_file}: {error}. "
+            "In the container this must be the mounted path, and the file must be "
+            "readable by uid 10001 — see README.md."
+        ) from error
+    except ValueError as error:
+        raise ImproperlyConfigured(
+            f"{credentials_file} is not a usable service-account key: {error}"
+        ) from error
     # cache_discovery=False: the default file cache warns noisily under a
     # non-writable working directory, which is exactly how the timer runs it.
     service = build("sheets", "v4", credentials=credentials, cache_discovery=False)

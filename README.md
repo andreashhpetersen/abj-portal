@@ -214,7 +214,24 @@ the next sync as a new application.
 3. Open the form's responses spreadsheet and **share it, read-only, with the
    service account's email address** — that share is the only thing granting
    access, and it reaches no other file in the Drive.
-4. Put the key on the server at `/opt/abj-portal/secrets/google-sheets.json`.
+4. **Get the new build and the new compose file onto the server first.** Two
+   things the earlier steps do not do for you:
+
+   * The image must contain `google-api-python-client`, which means deploying a
+     build from after this feature landed — push to `main` and let the release
+     workflow run.
+   * `docker-compose.yml` gained the `./secrets` mount, and **the deploy workflow
+     does not copy it**. It only sets `PORTAL_IMAGE`, pulls and restarts, so
+     `/opt/abj-portal/docker-compose.yml` is whatever was placed there by hand
+     during *First-time server setup*. Copy the new one over and recreate the
+     container, or the key will not exist inside it:
+
+         scp deploy/docker-compose.yml <user>@<host>:/opt/abj-portal/
+         ssh <user>@<host> 'cd /opt/abj-portal && docker compose up -d'
+
+   The same applies to any later change to `docker-compose.yml`, `Caddyfile` or
+   `backup.sh`.
+5. Put the key on the server at `/opt/abj-portal/secrets/google-sheets.json`.
    `docker-compose.yml` bind-mounts that directory read-only at
    `/run/secrets/abj`, so the path the app sees is not the path on the host.
    The container runs as uid 10001, so make the key readable by it:
@@ -236,7 +253,7 @@ the next sync as a new application.
 
    Locally, point `SHOPRENTALS_GOOGLE_CREDENTIALS` straight at wherever you
    saved the key — there is no container in the way.
-5. Check it end to end before scheduling anything:
+6. Check it end to end before scheduling anything:
 
        docker compose run --rm --no-deps app \
            python manage.py sync_applications --dry-run
@@ -244,7 +261,7 @@ the next sync as a new application.
    That reads the sheet, reports how many responses it parsed and warns about
    anything it could not map, and writes nothing. Drop `--dry-run` once it looks
    right.
-6. Run it on a timer. Every five minutes is plenty:
+7. Run it on a timer. Every five minutes is plenty:
 
        # /etc/systemd/system/abj-sync-applications.service
        [Unit]
