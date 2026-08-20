@@ -130,9 +130,20 @@ jobs:
 
           # Release phase. Runs against the new image before it starts serving,
           # and a failure here aborts the deploy with the old container still up.
-          docker compose run --rm app python manage.py migrate --noinput
+          #
+          # -T and </dev/null are load-bearing, not tidiness. This whole script
+          # arrives on the remote bash's stdin, and 'compose run' attaches stdin
+          # by default — so without them it eats the rest of the script, and
+          # everything below here silently never runs. That failed as a *green*
+          # deploy that pulled the image, migrated, and left the old container
+          # serving.
+          docker compose run --rm -T app python manage.py migrate --noinput </dev/null
 
           docker compose up -d
+
+          # And prove it. A deploy whose restart did not happen must not report
+          # success — that is precisely the failure this pipeline just had.
+          docker compose ps --format '{{.Image}}' app | grep -qx "$IMAGE"
 
           # Reclaim superseded releases. Plain 'prune -f' would not: it only
           # removes dangling images, and every release is tagged by SHA, so
