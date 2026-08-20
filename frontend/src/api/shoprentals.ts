@@ -116,6 +116,21 @@ export function bodyAnswers(application: Application): Answer[] {
   return application.answers.filter((answer) => !alreadyShown.includes(answer.value))
 }
 
+/**
+ * Split a question into its title and the help text underneath.
+ *
+ * A Google Form question carries a description below its title, and the
+ * responses sheet flattens both into one heading — the association's form does
+ * this on nearly every question, some with a paragraph of instructions. Rendered
+ * as one run of text it buries the actual question, so the title becomes the
+ * label and the rest a note beside it. (`ingest.normalise_header` splits on the
+ * same line for the same reason.)
+ */
+export function splitQuestion(question: string): { title: string; description: string } {
+  const [title, ...rest] = question.split('\n')
+  return { title: title.trim(), description: rest.join('\n').trim() }
+}
+
 export interface StatusSummary {
   total: number
   by_status: Record<ApplicationStatus, number>

@@ -81,12 +81,23 @@ TIMESTAMP_HEADERS = ("tidsstempel", "timestamp")
 def normalise_header(header):
     """Fold a column heading to something matchable.
 
-    Headings arrive with the question's punctuation and casing attached, and
-    Google appends a disambiguating suffix when two questions share a wording.
-    Lowercase, strip the trailing punctuation, collapse whitespace.
+    **Only the first line counts.** A Google Form question can carry a
+    description under its title, and the responses sheet flattens both into one
+    heading — AB Jæger's own form has `Navn\\n(Fornavn(e) + Efternavn)` and
+    several questions with a paragraph of explanation below the title. Matching
+    the whole thing would mean an alias table full of prose that breaks the
+    moment someone edits a help text, so the title is what identifies a question
+    and the rest is treated as commentary.
+
+    Two questions sharing a title therefore fold together. Only the first is
+    lifted into its column (see `parse_rows`), and both keep their answers, so
+    the cost of that is small and the alternative is worse.
+
+    Beyond that: lowercase, collapse whitespace, drop trailing punctuation and
+    the asterisk Google adds to a required question.
     """
-    folded = str(header or "").strip().lower()
-    folded = re.sub(r"\s+", " ", folded)
+    title = str(header or "").split("\n", 1)[0]
+    folded = re.sub(r"\s+", " ", title).strip().lower()
     return folded.rstrip(" :?*.")
 
 

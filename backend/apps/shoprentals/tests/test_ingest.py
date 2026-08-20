@@ -47,7 +47,43 @@ def row(
 def test_a_heading_is_matched_regardless_of_case_punctuation_and_spacing():
     assert normalise_header("  E-Mailadresse:  ") == "e-mailadresse"
     assert normalise_header("Hvad vil du bruge lejemålet til?") == "hvad vil du bruge lejemålet til"
+    assert normalise_header("Navn *") == "navn"
     assert normalise_header(None) == ""
+
+
+def test_only_a_questions_first_line_identifies_it():
+    """A Google Form question carries its description below the title, and the
+    responses sheet flattens both into one heading. The real form has exactly
+    this shape, so matching the whole thing would recognise nothing."""
+    assert normalise_header("Navn\n(Fornavn(e) + Efternavn)") == "navn"
+    assert (
+        normalise_header("Konceptbeskrivelse\nLav en grundig beskrivelse af dit koncept.")
+        == "konceptbeskrivelse"
+    )
+
+
+def test_a_contact_question_with_a_description_still_fills_its_column():
+    """The bug this caught: the committee's list showed no applicant names,
+    because every heading in the real form has a second line."""
+    header = ["Tidsstempel", "Navn\n(Fornavn(e) + Efternavn)", "Mailadresse", "Telefonnummer"]
+    responses, _skipped = parse_rows(
+        header, [["20/08/2026 14.32.05", "Mette Sørensen", "mette@blomster.dk", "12345678"]]
+    )
+    (response,) = responses
+    assert response.applicant_name == "Mette Sørensen"
+    assert response.email == "mette@blomster.dk"
+    assert response.phone == "12345678"
+    # And the full heading, description included, is what gets displayed.
+    assert response.answers[0]["question"] == "Navn\n(Fornavn(e) + Efternavn)"
+
+
+def test_two_questions_sharing_a_title_lift_only_the_first():
+    """They fold to the same key. Both answers survive; only one column is set."""
+    header = ["Tidsstempel", "Navn\n(på dig)", "Navn\n(på din revisor)"]
+    responses, _skipped = parse_rows(header, [["20/08/2026 14.32.05", "Mette", "Jens"]])
+    (response,) = responses
+    assert response.applicant_name == "Mette"
+    assert [item["value"] for item in response.answers] == ["Mette", "Jens"]
 
 
 def test_the_danish_timestamp_format_google_writes_is_understood():

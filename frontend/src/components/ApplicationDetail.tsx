@@ -10,7 +10,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { fieldErrors } from '../api/bookings'
-import { STATUS_LABELS, STATUS_ORDER, bodyAnswers, shopRentals } from '../api/shoprentals'
+import {
+  STATUS_LABELS,
+  STATUS_ORDER,
+  bodyAnswers,
+  shopRentals,
+  splitQuestion,
+} from '../api/shoprentals'
 import { daysSince, formatDate } from '../lib/dates'
 import { ContractDetailsForm } from './ContractDetailsForm'
 import { StarRating } from './StarRating'
@@ -209,14 +215,20 @@ export function ApplicationDetail({ application, members, onChanged }: Props) {
       {tab === 'answers' ? (
         <dl className="answers">
           {answers.length === 0 && <p className="hint">Ansøgningen indeholder ingen svar.</p>}
-          {answers.map((answer, index) => (
-            // Indexed: the form may ask two questions with the same wording, and
-            // the position is what makes them distinct.
-            <div className="answers__item" key={`${answer.question}-${index}`}>
-              <dt>{answer.question}</dt>
-              <dd>{answer.value || <span className="hint">(ikke besvaret)</span>}</dd>
-            </div>
-          ))}
+          {answers.map((answer, index) => {
+            const { title, description } = splitQuestion(answer.question)
+            return (
+              // Indexed: the form may ask two questions with the same wording,
+              // and the position is what makes them distinct.
+              <div className="answers__item" key={`${answer.question}-${index}`}>
+                <dt>
+                  {title}
+                  {description && <span className="answers__note">{description}</span>}
+                </dt>
+                <dd>{answer.value || <span className="hint">(ikke besvaret)</span>}</dd>
+              </div>
+            )
+          })}
         </dl>
       ) : (
         <ContractDetailsForm

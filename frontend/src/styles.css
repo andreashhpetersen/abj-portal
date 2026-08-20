@@ -723,6 +723,19 @@ select {
 .answers__item dt {
   font-size: 0.8rem;
   color: var(--color-muted);
+  font-weight: 600;
+}
+
+/* The help text under a form question's title. Kept clearly subordinate: on
+   this form it can run to a paragraph of instructions, and it must not compete
+   with the question or the answer. */
+.answers__note {
+  display: block;
+  max-width: 46rem;
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: #8a887f;
+  white-space: pre-line;
 }
 
 .answers__item dd {
