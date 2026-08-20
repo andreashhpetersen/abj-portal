@@ -146,9 +146,69 @@ returns early for detail routes. Filtering there once made cancelled bookings
 **The event list is unpaginated on purpose** — a month view bounded by
 `?from=`/`?to=` must not have bookings silently truncated by a page size.
 
-**`apps/shoprentals` is still a placeholder** in `INSTALLED_APPS` and
-`config/urls.py` with empty `urlpatterns`; its `models.py` docstring records the
-domain rules from the brief.
+**`apps/shoprentals` is organised around who owns which field.** That split is
+the whole design, and breaking it is the way to do real damage here. The
+applicant owns their answers, and the sync overwrites them on every run. The
+committee owns status, rating, assignee, comments and the contract details, and
+the sync must never write those — `Application.apply_form_data` is the only
+writer of form-owned fields and touches nothing else. A sync that reset a rating
+would be a sync nobody could safely run on a timer, so
+`test_a_resync_does_not_touch_the_committees_own_work` is the test to keep
+green. Rows that disappear from the sheet keep their applications, which by then
+may carry months of notes.
+
+**The shop-rental form is expected to change, so the schema does not mirror it.**
+Every answer is stored verbatim and in order in `Application.answers`, and the UI
+renders whatever arrives rather than naming questions. Only name, email and phone
+are lifted into columns, by `HEADER_ALIASES` in `ingest.py` — *the* one place a
+form change needs reflecting. A new question costs nothing; a reworded contact
+question still stores its answer, leaves the column blank, and makes
+`sync_applications` say so on stderr. Don't "tidy" this into typed columns per
+question.
+
+**Ingestion polls and reconciles; it does not replay.** Each
+`manage.py sync_applications` run reads the whole sheet and upserts, so a failed
+run, a mid-run deploy or a hand-edited cell all resolve on the next pass. That
+self-healing is why polling was chosen over an Apps Script webhook, whose lost
+deliveries look exactly like "nobody applied this week". Identity is a digest of
+the submission's timestamp and email (`ingest.source_key`), because a responses
+sheet has no id and a row number would re-point every key below it as soon as
+someone sorted the sheet.
+
+**`sheets.py` is the only code that touches Google**, and it imports the client
+libraries inside the function so the rest of the portal runs, checks and tests
+without them. Everything interesting lives in `ingest.py`, which takes a header
+and rows from anywhere — that seam is what makes the ingestion testable without
+credentials or a network.
+
+**`Application.search_text` is a denormalised search column, not information.**
+Django writes JSONField values with `ensure_ascii`, so a word like "Frisør"
+reaches the column with its ø as a `\u`-escape, and an `icontains` against
+`answers` silently matches nothing for exactly the words a Danish committee
+searches for. `Application.save()` rebuilds it on every write so it cannot
+drift — don't replace the filter with a JSON lookup.
+
+**The five statuses are the committee's real workflow, not a tidy state machine.**
+`Gemt til senere` exists because there is usually no vacant unit to offer a good
+applicant at the moment they apply, and it is the state that makes the archive
+worth keeping; `I gang` routinely lasts months, which is why `set_status()`
+stamps `status_changed_at` — go through it rather than assigning `status`
+directly. `rating` is nullable because unrated is not the same as one star.
+Nothing is ever deleted: rubbish is `Afvist` so a reapplying applicant is
+recognisable, which is also why the viewset has no create and no destroy.
+
+**`ApplicationDetails` is filled in by hand, over weeks, and is never complete
+early.** Every field is optional and the API reports `missing_fields` so the UI
+can show a checklist. Its purpose is the document handed to the association's
+lawyer to draft the lease — **that export is not built**, and the field list is a
+starting point to be reconciled with what the lawyer actually asks for.
+
+**Assignment is restricted to the erhvervsudvalg**, validated in
+`ApplicationSerializer.validate_assignee_id` — note the name follows the
+serializer field, not the model field, or DRF never calls it. The list of
+assignable people comes from `User.objects.business_committee()`, so the rule for
+who counts lives next to `is_business_committee` rather than being re-derived by
+naming the group inline.
 
 **The calendar UI is hand-built, no calendar library.** `src/lib/dates.ts` owns
 every date decision: Monday-first weeks, and `dateKey()` composing
@@ -220,6 +280,13 @@ Deliberately unresolved — don't quietly pick one while doing something else.
   read-only in the admin, whether a `synced_at` field is needed, and what
   happens when someone moves out. Until it is settled, residency is edited by
   hand in the admin and `external_user_id` is required.
+
+- **What the lawyer actually needs to draft a lease.** `ApplicationDetails` has a
+  plausible field set and a `REQUIRED_FOR_CONTRACT` list, both guessed rather
+  than asked for. Until someone checks with the association's lawyer, don't build
+  the export on top of them — a document generator pinned to the wrong fields is
+  harder to correct than the fields themselves. Adding or removing one is a
+  migration and a line in `REQUIRED_FOR_CONTRACT`, nothing more.
 
 ## Conventions
 

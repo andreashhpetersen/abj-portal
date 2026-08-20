@@ -126,6 +126,17 @@ DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="beboerportal@loca
 # Error mail to the admins uses this instead of DEFAULT_FROM_EMAIL.
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
+# Shop-rental applications are ingested from the public Google Form's responses
+# sheet by `manage.py sync_applications`. All three have empty defaults so a
+# checkout with no Google setup still boots and tests — the command fails with a
+# clear message instead, and nothing else in the portal touches Google.
+# The sheet is shared read-only with the service account named in the key file.
+SHOPRENTALS_SHEET_ID = env("SHOPRENTALS_SHEET_ID", default="")
+SHOPRENTALS_GOOGLE_CREDENTIALS = env("SHOPRENTALS_GOOGLE_CREDENTIALS", default="")
+# A1 notation without a sheet name means "the first sheet", which avoids
+# depending on whether Google named the tab "Formularsvar 1" or "Form Responses 1".
+SHOPRENTALS_SHEET_RANGE = env("SHOPRENTALS_SHEET_RANGE", default="A:ZZ")
+
 # The SPA authenticates with the session cookie it already has, so DRF only
 # needs session auth. Everything is private by default; endpoints that should
 # be public opt out explicitly with their own permission_classes.

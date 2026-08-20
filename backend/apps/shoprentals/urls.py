@@ -1,6 +1,21 @@
-from django.urls import path  # noqa: F401  (kept for the first route added here)
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from . import views
 
 app_name = "shoprentals"
 
-# Mounted by config/urls.py. Routes land here as the feature is built.
-urlpatterns = []
+router = DefaultRouter()
+router.register("applications", views.ApplicationViewSet, basename="application")
+
+urlpatterns = [
+    # Before the router, so "members" is not read as an application id.
+    path("members/", views.CommitteeMembersView.as_view(), name="members"),
+    path(
+        "applications/<int:pk>/details/",
+        views.ApplicationDetailsView.as_view(),
+        name="application-details",
+    ),
+    path("comments/<int:pk>/", views.CommentDeleteView.as_view(), name="comment-detail"),
+    path("", include(router.urls)),
+]

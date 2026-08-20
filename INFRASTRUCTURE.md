@@ -258,6 +258,47 @@ sets the console backend and nothing else exists. When the provider is
 live, the SMTP settings and `DEFAULT_FROM_EMAIL` belong in
 `config/settings/base.py`, read from environment variables.
 
+## Google, for the shop-rental form
+
+This one goes the other way from every other decision here, so it is worth being
+explicit about what was traded.
+
+Candidates for erhvervslejemål apply through a **Google Form**, and the portal
+reads its responses sheet via the Sheets API using a read-only service account
+(see `README.md`). That means a Google credential now sits on the portal's server
+and the server makes outbound calls to Google on a timer — in a project whose
+stated criterion is European *ownership*, not merely residency.
+
+The reasoning for accepting it:
+
+* **The exposure already exists and is not the portal's to remove.** The
+  applicants' data is typed into a Google Form. Whether the portal reads that
+  sheet or a committee member reads it in a browser, the data is in Google either
+  way. Refusing to integrate would not have moved a single byte out of Google; it
+  would only have kept the committee working in a spreadsheet.
+* **The credential is narrow.** A service account with
+  `spreadsheets.readonly`, and access granted solely by sharing that one
+  spreadsheet with its address. It cannot read anything else in the Drive, and it
+  cannot write.
+* **The alternative was worse in the way that matters.** An Apps Script webhook
+  would have put no credential on the server, but its failure mode — a
+  submission arriving while the portal is down, or a trigger that silently
+  stops — is indistinguishable from "nobody applied", in a volunteer-run system
+  where nobody is watching. Polling reconciles the whole sheet every run, so
+  every such failure heals itself.
+
+What would actually resolve it is **replacing the Google Form** with a form in
+the portal, writing applications directly to the database. That is the honest
+long-term answer and it is not currently planned. If it happens,
+`apps/shoprentals/sheets.py` is the only file that has to go: `ingest.py`
+deliberately takes a header and rows from anywhere.
+
+Worth noting for anyone reconsidering: applicants for a commercial lease are
+businesses rather than residents, so this is not the association's
+resident register. That does not make it public — it is committee-only, and
+includes people's names and phone numbers — but the sensitivity is lower than the
+data the rest of this document is written to protect.
+
 ## Room to grow
 
 The load ceiling for a single andelsboligforening sits far below the point
@@ -347,7 +388,7 @@ Working already: the database and server exist in `dk-cph1`; Docker, `age` and
 `rclone` are installed; `deploy/` is at `/opt/abj-portal/` with a real `.env`;
 and the stack has been proven end-to-end over plain HTTP against the server's
 IP — registry pull, `migrate` against the managed database, `compose up`, and
-all seven `deploy/smoke.sh` assertions passing. Only TLS is unproven.
+every `deploy/smoke.sh` assertion passing. Only TLS is unproven.
 
 Remaining, in dependency order:
 
@@ -374,6 +415,13 @@ Remaining, in dependency order:
 8. **Rotate the database password** if it has been copied anywhere off the
    server, and consider a dedicated application role rather than `upadmin`,
    which is the cluster administrator.
+9. **Set up the shop-rental form's service account** and the sync timer — the
+   Google project, the read-only key at
+   `SHOPRENTALS_GOOGLE_CREDENTIALS`, sharing the responses sheet with the
+   service account's address, and the systemd timer. `README.md`, *Shop-rental
+   applications*, has the steps; see *Google, for the shop-rental form* above
+   for why this dependency was accepted. Until it is done the erhverv page
+   works but stays empty.
 
 ## Portability
 

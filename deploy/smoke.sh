@@ -60,6 +60,11 @@ check /booking/2026-08 200 'client-side route falls back to index.html'
 # be 200 with HTML, and every mistyped API path would look like a working page.
 check /api/does-not-exist/ 404 'unknown API route must NOT get the SPA'
 check /admin/ 302 'admin still reachable, not swallowed by the SPA'
+# 403 rather than 404 or 200 proves two things at once: the shop-rental routes
+# are mounted, and they are closed to anyone not logged in. A 200 here would mean
+# applicant data had been left readable by the whole internet.
+check /api/shop-rentals/applications/ 403 'shop-rental applications are mounted and closed'
+check /erhverv 200 'committee route falls back to index.html'
 
 body=$(curl -s --max-time 5 "$BASE/")
 case $body in
