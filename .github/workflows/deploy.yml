@@ -162,8 +162,8 @@ jobs:
       # Skipped while PORTAL_DOMAIN is unset, which is the interim state before
       # DNS exists: there is no name to reach the site by, so this could only
       # fail, and a release that always ends red teaches everyone to ignore red.
-      # Setting the variable is what switches verification on — see README.md,
-      # "Bringing the server up before DNS is ready".
+      # Setting the variable is what switches verification on — see
+      # OPERATIONS.md, "Interim: running before DNS is ready".
       - name: Verify the deployment answers
         if: vars.PORTAL_DOMAIN != ''
         env:

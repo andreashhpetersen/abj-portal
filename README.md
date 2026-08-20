@@ -1,12 +1,18 @@
 # Beboerportal
 
 Web app for **AB Jæger**, a Danish *andelsboligforening* (housing cooperative)
-whose flats span several blocks across more than one street. Two planned
-features: booking of the community room, and handling of shop-rental
-applications for the business committee.
+whose flats span several blocks across more than one street. Two features:
+booking of the community room, and handling of shop-rental applications for the
+business committee.
 
-Django REST API + React SPA. Both currently ship a working login and empty
-feature sections.
+Django REST API + React SPA, served as a single origin in production.
+
+| Document              | What it covers                                          |
+| --------------------- | ------------------------------------------------------- |
+| This file             | What the portal does, and how to develop it              |
+| `OPERATIONS.md`       | Running it on the server: releases, setup, the sync      |
+| `INFRASTRUCTURE.md`   | Why the hosting is what it is, and what is outstanding   |
+| `CLAUDE.md`           | Design decisions worth not undoing                       |
 
 ## Requirements
 
@@ -27,15 +33,16 @@ cd backend
 pip install -r requirements-dev.txt
 python manage.py migrate
 python manage.py createsuperuser      # asks for email, not username
-python manage.py seed_demo            # optional: demo residents and bookings
+python manage.py seed_demo            # optional: demo residents, bookings, applications
 python manage.py runserver            # http://127.0.0.1:8000
 ```
 
-`seed_demo` fills the calendar with plausible Danish data — residents across
+`seed_demo` fills the database with plausible Danish data — residents across
 three buildings, private and public bookings, a recurring café, one cancelled
-booking, and an employee account with no residency. Every account uses the
-password `beboer1234`, so the command refuses to run unless `DEBUG=True`. Rebuild
-it any time with `python manage.py seed_demo --reset`.
+booking, an employee account with no residency, and six shop-rental applications
+spread across the workflow. Every account uses the password `beboer1234`, so the
+command refuses to run unless `DEBUG=True`. Rebuild it any time with
+`python manage.py seed_demo --reset`, which removes only what it created.
 
 **Frontend**
 
@@ -64,6 +71,7 @@ into the admin.
 | Run one test             | `backend/`  | `pytest apps/accounts/tests/test_auth.py::test_login_returns_the_member_and_starts_a_session` |
 | Lint / format            | `backend/`  | `ruff check .` · `ruff format .`            |
 | Make migrations          | `backend/`  | `python manage.py makemigrations`           |
+| Sync shop-rental form    | `backend/`  | `python manage.py sync_applications`        |
 | Type-check               | `frontend/` | `npm run typecheck`                         |
 | Production build         | `frontend/` | `npm run build` → `frontend/dist/`          |
 
@@ -73,11 +81,13 @@ into the admin.
 backend/
   config/            Django project: settings/{base,dev,prod}.py, urls.py, wsgi.py
   apps/accounts/     Custom email-based User, residency, auth endpoints, permissions
-  apps/bookings/     Feature 1 — community room. Models + admin, no API yet.
-  apps/shoprentals/  Feature 2 — shop rentals. Placeholder.
+  apps/bookings/     Feature 1 — community room: models, rules, API
+  apps/shoprentals/  Feature 2 — shop rentals: models, Google Forms sync, API
 frontend/
-  src/api/           fetch wrapper (cookies + CSRF)
+  src/api/           fetch wrapper (cookies + CSRF), one module per feature
   src/auth/          AuthContext — holds the logged-in member
+  src/components/    Calendar grid, booking form, application list and detail
+  src/lib/dates.ts   Every date decision the calendar makes
   src/pages/         One component per route
 ```
 
@@ -91,8 +101,8 @@ touching an address must handle its absence.
 
 Addresses are structured: `Building` holds a street and house number (AB Jæger
 spans several blocks, so a street name alone does not identify a flat) and
-`Resident` adds floor and door. Both are managed in the admin — create the buildings once,
-then residency is edited inline on each user.
+`Resident` adds floor and door. Both are managed in the admin — create the
+buildings once, then residency is edited inline on each user.
 
 ## Booking the community room
 
@@ -146,11 +156,14 @@ of who had booked and why the slot came free.
 ## Shop-rental applications (erhvervslejemål)
 
 Candidates apply through a public **Google Form**. The portal reads the form's
-responses sheet on a timer and gives the erhvervsudvalg somewhere to work on what
-arrives: a status, a 1–5 rating, comments, an assignee, and a place to collect
-the concrete facts a lease needs.
+responses sheet on a timer and gives the erhvervsudvalg somewhere to work on
+what arrives: a status, a 1–5 rating, comments, an assignee, and a place to
+collect the concrete facts a lease needs.
 
 Nobody outside the erhvervsudvalg can see any of it.
+
+Setting up the Google service account, the credentials and the timer is in
+`OPERATIONS.md`.
 
 ### The workflow
 
@@ -178,27 +191,35 @@ committee's own complaint is that this stage drags.
 `apps/shoprentals/ingest.py` maps a sheet into applications; `sheets.py` is the
 only code that talks to Google.
 
-    python manage.py sync_applications
-    python manage.py sync_applications --dry-run   # parse and report, write nothing
+```bash
+python manage.py sync_applications
+python manage.py sync_applications --dry-run   # parse and report, write nothing
+```
 
 **Polling, not a webhook, and reconciling rather than replaying.** Every run
-reads the whole sheet and upserts. A failed run, a deploy mid-run, a fortnight of
-downtime or a cell corrected by hand in the sheet all sort themselves out on the
-next pass — which is worth much more here than seconds-fresh delivery, given that
+reads the whole sheet and upserts. A failed run, a deploy mid-run, a fortnight
+of downtime or a cell corrected by hand in the sheet all sort themselves out on
+the next pass — worth much more here than seconds-fresh delivery, given that
 these applications take weeks to become contracts.
 
 **The form is expected to change, so the schema does not mirror it.** Every
-answer is stored verbatim and in order, and the UI renders whatever arrives. Only
-the three fields the committee filters and searches on — name, email, phone — are
-lifted into columns, by the alias table `HEADER_ALIASES` in `ingest.py`. That
-table is the *only* place a form change needs reflecting: a brand-new question
-costs nothing at all, and a reworded contact question still stores its answer,
-leaves the column blank, and makes the sync command say so on stderr.
+answer is stored verbatim and in order, and the UI renders whatever arrives.
+Only the three fields the committee filters and searches on — name, email,
+phone — are lifted into columns, by the alias table `HEADER_ALIASES` in
+`ingest.py`. That table is the *only* place a form change needs reflecting: a
+brand-new question costs nothing, and a reworded contact question still stores
+its answer, leaves the column blank, and makes the sync say so on stderr.
+Questions match on their **first line**, because a Google Form question carries
+its description below the title and the sheet flattens both into one heading.
 
-**A sync never touches the committee's work.** It writes only the applicant's own
-fields. Status, rating, assignee, comments and contract details are not ours to
-move, and a sync that reset a rating would be one nobody could safely run. Rows
-that vanish from the sheet keep their applications, which by then may carry
+`IGNORED_HEADERS`, in the same file, drops questions that are plumbing rather
+than application data — the form's arithmetic anti-spam question. Removing an
+entry brings the column back on the next sync; nothing has to be re-imported.
+
+**A sync never touches the committee's work.** It writes only the applicant's
+own fields. Status, rating, assignee, comments and contract details are not ours
+to move, and a sync that reset a rating would be one nobody could safely run.
+Rows that vanish from the sheet keep their applications, which by then may carry
 months of notes.
 
 Identity comes from a digest of the submission's timestamp and email, because a
@@ -207,138 +228,20 @@ below it the moment someone sorted the sheet. The consequence: correct an
 applicant's email *in the portal*, not in the sheet — changing it upstream files
 the next sync as a new application.
 
-### Setting up the Google side
-
-1. In Google Cloud, create a project and enable the **Google Sheets API**.
-2. Create a **service account**, no roles needed, and download a JSON key.
-3. Open the form's responses spreadsheet and **share it, read-only, with the
-   service account's email address** — that share is the only thing granting
-   access, and it reaches no other file in the Drive.
-4. **Get the new build and the new compose file onto the server first.** Two
-   things the earlier steps do not do for you:
-
-   * The image must contain `google-api-python-client`, which means deploying a
-     build from after this feature landed — push to `main` and let the release
-     workflow run.
-   * `docker-compose.yml` gained the `./secrets` mount, and **the deploy workflow
-     does not copy it**. It only sets `PORTAL_IMAGE`, pulls and restarts, so
-     `/opt/abj-portal/docker-compose.yml` is whatever was placed there by hand
-     during *First-time server setup*. Copy the new one over and recreate the
-     container, or the key will not exist inside it:
-
-         scp deploy/docker-compose.yml <user>@<host>:/opt/abj-portal/
-         ssh <user>@<host> 'cd /opt/abj-portal && docker compose up -d'
-
-   The same applies to any later change to `docker-compose.yml`, `Caddyfile` or
-   `backup.sh`.
-5. Put the key on the server at `/opt/abj-portal/secrets/google-sheets.json`.
-   `docker-compose.yml` bind-mounts that directory read-only at
-   `/run/secrets/abj`, so the path the app sees is not the path on the host.
-   The container runs as uid 10001, so the key must be readable by it and the
-   directory must be traversable. Piping it in over ssh avoids the key ever
-   sitting in a home directory, and `umask 077` means it is never on disk at a
-   loose mode even briefly:
-
-       ssh root@HOST 'umask 077 \
-         && mkdir -p /opt/abj-portal/secrets \
-         && chmod 755 /opt/abj-portal/secrets \
-         && cat > /opt/abj-portal/secrets/google-sheets.json \
-         && chmod 400 /opt/abj-portal/secrets/google-sheets.json \
-         && chown 10001 /opt/abj-portal/secrets/google-sheets.json \
-         && ls -ln /opt/abj-portal/secrets/' \
-         < path/to/google-sheets.json
-
-   Expect `-r-------- 1 10001` — numeric, because `ls -ln` skips the name lookup
-   and 10001 has no name on the host.
-
-   Three things learned the hard way here, all worth keeping:
-
-   * **`chown`, not `install -o`.** The user is `portal` *inside the image* and
-     does not exist on the host, and this server's `install` rejects a numeric
-     owner outright: `invalid user: '10001'`. `chown` takes uids happily.
-   * **`cat`, not `install -m 400 /dev/stdin`.** Older `install` builds refuse a
-     non-regular source file, and the failure is easy to miss in the middle of a
-     chain. `cat` is portable and the `umask` closes the same gap.
-   * **No group.** The mode is owner-only, so the group is irrelevant — and the
-     image's `useradd` passes no `--gid`, so the group id is *not* 10001.
-
-   If you would rather stage it, `scp` it to your own home directory and use
-   `sudo` for the parts that write under `/opt` — `~` is expanded by your local
-   shell before `sudo` runs, so it reads *your* home, not root's. Delete the
-   staged copy afterwards with `shred -u`.
-
-   Then in `/opt/abj-portal/.env`:
-
-       SHOPRENTALS_SHEET_ID=<the spreadsheet id from its URL>
-       SHOPRENTALS_GOOGLE_CREDENTIALS=/run/secrets/abj/google-sheets.json
-       SHOPRENTALS_SHEET_RANGE=A:ZZ   # optional; the default reads the first sheet
-
-   All three default to empty, so a checkout with no Google setup still boots and
-   tests — `sync_applications` fails with a clear message instead. The mount is a
-   directory rather than the file itself for the same reason: the stack starts
-   whether or not a key is there.
-
-   Locally, point `SHOPRENTALS_GOOGLE_CREDENTIALS` straight at wherever you
-   saved the key — there is no container in the way.
-6. Check it end to end before scheduling anything:
-
-       docker compose run --rm --no-deps app \
-           python manage.py sync_applications --dry-run
-
-   That reads the sheet, reports how many responses it parsed and warns about
-   anything it could not map, and writes nothing. Drop `--dry-run` once it looks
-   right.
-7. Run it on a timer. Every five minutes is plenty:
-
-       # /etc/systemd/system/abj-sync-applications.service
-       [Unit]
-       Description=Sync erhvervslejemål applications from Google Forms
-       After=docker.service
-       [Service]
-       Type=oneshot
-       WorkingDirectory=/opt/abj-portal
-       ExecStart=/usr/bin/docker compose run --rm --no-deps app \
-           python manage.py sync_applications
-
-       # /etc/systemd/system/abj-sync-applications.timer
-       [Unit]
-       Description=Sync erhvervslejemål applications every five minutes
-       [Timer]
-       OnBootSec=5min
-       OnUnitActiveSec=5min
-       [Install]
-       WantedBy=timers.target
-
-   Then `sudo systemctl enable --now abj-sync-applications.timer`. Compose reads
-   `/opt/abj-portal/.env` itself, so the unit needs no `EnvironmentFile`;
-   `--no-deps` keeps a sync from dragging Caddy up with it, and `run` rather than
-   `exec` means the sync still works when the app container is down.
-
-   Watch it with `journalctl -u abj-sync-applications.service -f`. A failed run
-   needs no intervention — the next one reads the whole sheet again.
-
-`SHOPRENTALS_SHEET_RANGE` deliberately carries no sheet name: Google names the
-responses tab by the form's locale, so "the first sheet" survives both
-*Formularsvar 1* and *Form Responses 1*.
-
-For local development, `python manage.py seed_demo` creates six applications
-through the real ingest path, so the page has something to show without any of
-the above.
-
 ### Preparing the contract
 
 Each application has a *Kontraktoplysninger* record: CVR, legal form, contact
 person, which unit, what it may be used for, area, rent, deposit, wanted
 handover, and free-text notes. None of it comes from the form — the form asks
 only enough to judge whether someone is worth talking to, and the rest arrives
-over weeks of correspondence. So every field is optional and a half-filled record
-is the normal state, saved a field at a time.
+over weeks of correspondence. So every field is optional and a half-filled
+record is the normal state, saved a field at a time.
 
 The API reports `missing_fields`, the labels of what is still outstanding, which
 the UI shows as a checklist. **Generating the document for the lawyer is not
 built** — the record is shaped so that it is a formatting job, but there is no
-export yet, and the field list is a starting point that should be reconciled with
-what the lawyer actually asks for.
+export yet, and the field list is a starting point that should be reconciled
+with what the lawyer actually asks for.
 
 ### API
 
@@ -356,8 +259,8 @@ Every route requires membership of the erhvervsudvalg.
 | `GET`           | `/api/shop-rentals/members/`                      |
 
 `PATCH` on an application accepts `status`, `rating` and `assignee_id` and
-nothing else: the applicant's answers are a record of what was submitted, and the
-sync would overwrite an edit anyway. There is no `POST` and no `DELETE` —
+nothing else: the applicant's answers are a record of what was submitted, and
+the sync would overwrite an edit anyway. There is no `POST` and no `DELETE` —
 applications exist because someone filled in the form.
 
 The list takes repeatable `?status=`, plus `?assignee=` (a member id or
@@ -387,185 +290,18 @@ is intentional.
 
 The three `SHOPRENTALS_*` variables are the exception to that rule: they default
 to empty on purpose, so the portal runs perfectly well with no Google setup and
-only `sync_applications` complains. See *Shop-rental applications* above.
+only `sync_applications` complains.
+
+Note that `.env.example` is a committed template and is **never read**. The file
+Django loads is `.env` at the repository root, which is gitignored.
 
 ## Deployment
 
-The target is **UpCloud** — a single cloud server plus Managed PostgreSQL —
-with Proton for AB Jæger's own mailboxes and Scaleway Transactional Email
-for mail the portal sends itself. `INFRASTRUCTURE.md` records why, including
-what was rejected and what still needs verifying.
+One image holds both halves of the app: gunicorn serves the API and the admin,
+WhiteNoise serves the built SPA from the same process, and Caddy terminates TLS
+in front of it. A push to `main` runs the checks, builds the image, and releases
+it to the server.
 
-Nothing is provisioned yet; the pipeline below is written and unexercised.
-
-### Shape
-
-One image holds both halves of the app. Gunicorn serves the API and the
-admin, and WhiteNoise serves the SPA bundle from the same process, so the
-browser sees a single origin and the session and CSRF cookies behave exactly
-as they do behind the Vite proxy in development. Caddy terminates TLS in
-front of it and renews certificates by itself, which is why no managed load
-balancer is needed at this size. The database is UpCloud's, reached through
-`DATABASE_URL`.
-
-```
-Caddy (TLS, :443) ──> gunicorn ──> UpCloud Managed PostgreSQL
-                        │
-                        ├─ /api/, /admin/  Django
-                        ├─ /static/        WhiteNoise (admin + DRF assets)
-                        └─ everything else SPA bundle, index.html fallback
-```
-
-The catch-all lives in `config/urls.py` behind the `SERVE_SPA` setting, and
-excludes `api/`, `admin/` and `static/` — without that exclusion a missing
-API route would answer `200` with HTML instead of `404` with JSON.
-
-| File                         | Purpose                                  |
-| ---------------------------- | ---------------------------------------- |
-| `deploy/Dockerfile`          | Builds the SPA, then the app image       |
-| `deploy/docker-compose.yml`  | The stack as it runs on the server       |
-| `deploy/Caddyfile`           | TLS and reverse proxy                    |
-| `deploy/backup.sh`           | Nightly encrypted `pg_dump` off-server   |
-| `deploy/smoke.sh`            | Asserts a running portal serves properly |
-| `.github/workflows/ci.yml`   | Checks on pull requests                  |
-| `.github/workflows/deploy.yml`| Test, build, release on push to `main`   |
-
-### Pipeline
-
-`deploy.yml` runs the same lint, test and typecheck jobs CI runs, and only
-then builds. It pushes the image to ghcr.io tagged with the commit SHA, pins
-that tag in the server's `.env`, runs `migrate` against the new image as a
-release phase — a failure there aborts with the old container still serving —
-brings the stack up, and polls `/api/health/` until it answers. Releases are
-serialised and never cancelled mid-flight, since a half-finished deploy can
-leave migrations applied against the previous image.
-
-Expect a few seconds of downtime while the container is replaced. Rolling
-that to zero needs a second app node and a load balancer, which the launch
-scope does not justify.
-
-**Rolling back.** Superseded images are kept on the server for three days, so a
-bad release can be undone without waiting for a build. On the server:
-
-```bash
-cd /opt/abj-portal
-docker image ls --filter label=app=abj-portal   # find the previous SHA tag
-sed -i '/^PORTAL_IMAGE=/d' .env
-echo "PORTAL_IMAGE=ghcr.io/<owner>/<repo>:<previous-sha>" >> .env
-docker compose up -d
-```
-
-That reverts the code, not the database. A release whose migration cannot be
-undone has to be fixed forward.
-
-### First-time server setup
-
-1. Create the cloud server and the Managed PostgreSQL instance, and point the
-   portal's DNS record at the server.
-2. Install Docker, plus `age` and `rclone` for backups.
-3. `docker login ghcr.io` with a token carrying `read:packages`, so the
-   server can pull the image.
-4. Create `/opt/abj-portal/` holding `docker-compose.yml`, `Caddyfile`,
-   `backup.sh` and a `.env` built from `.env.example`.
-5. Schedule the backup: `17 3 * * *  /opt/abj-portal/backup.sh`, with cron
-   mail going somewhere a person reads.
-6. Add the repository secrets and variable listed at the top of
-   `.github/workflows/deploy.yml`, then push to `main`.
-
-**Restore-test the backups quarterly.** The database runs on a single node
-with three days of point-in-time recovery, and the nightly dump is what
-covers anything older. An untested dump is not a backup — `deploy/backup.sh`
-documents the restore.
-
-### Bringing the server up before DNS is ready
-
-Caddy asks Let's Encrypt for a certificate the moment it boots with a domain in
-its site address, and Let's Encrypt rate-limits repeated failed challenges — so
-if the DNS record does not exist yet, do not point Caddy at the domain and hope.
-Serve plain HTTP against the server's IP instead. That exercises the registry
-pull, `migrate`, the compose stack and the whole routing contract, leaving only
-TLS untested, so when DNS lands there is one variable left rather than five.
-
-In `/opt/abj-portal/.env` on the server:
-
-```
-DJANGO_ALLOWED_HOSTS=<server ip>
-DJANGO_SECURE_SSL_REDIRECT=False
-PORTAL_IMAGE=ghcr.io/<owner>/<repo>:latest
-```
-
-Keep `PORTAL_DOMAIN` and `ACME_EMAIL` set even though Caddy will not read the
-domain in this mode: `docker-compose.yml` marks both required and refuses to
-start without them.
-
-In `/opt/abj-portal/Caddyfile`, replace the site address with a bare port:
-
-```
-:80 {
-```
-
-With no hostname there, Caddy skips automatic HTTPS altogether, so nothing is
-requested from Let's Encrypt and no rate limit is spent.
-
-Then, on the server:
-
-```bash
-cd /opt/abj-portal
-docker compose run --rm app python manage.py migrate
-docker compose up -d
-```
-
-And from a workstation, against the server's IP:
-
-```bash
-./deploy/smoke.sh http://SERVER_IP
-```
-
-**Logging in will not work over plain HTTP.** `prod.py` sets
-`SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE`, neither of which is
-env-overridable, so the browser withholds both cookies. `smoke.sh` does not
-authenticate, so its checks still pass — this is expected, not a fault to chase.
-
-The release workflow's own verification is skipped in this state too: it only
-runs when the `PORTAL_DOMAIN` repository variable is set, since without a name
-it could only fail. Deploys therefore go green on having deployed, and start
-proving the site answers the moment that variable exists.
-
-When DNS is ready, undo it in this order:
-
-1. Delete `DJANGO_SECURE_SSL_REDIRECT=False` from `.env`. Leaving it behind is a
-   genuine security regression, not just untidiness
-2. Set `DJANGO_ALLOWED_HOSTS` to the domain
-3. Re-copy `Caddyfile` from the repository rather than editing it back, so the
-   server's copy cannot quietly drift
-4. `docker compose up -d`, then `./deploy/smoke.sh https://DOMAIN`
-5. Set the `PORTAL_DOMAIN` repository variable, which turns the release
-   workflow's verify step back on
-
-### Smoke-testing the image locally
-
-Worth doing before the first real deploy, since this exercises the single-origin
-arrangement and the SPA fallback that `runserver` never sees. Port 8011 rather
-than 8000, so it does not collide with a dev server you have running:
-
-```bash
-docker build -f deploy/Dockerfile -t abj-portal .
-docker run -d --name portal-smoke -p 8011:8000 \
-  -e DJANGO_SECRET_KEY=local-smoke-test \
-  -e DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1 \
-  -e DATABASE_URL=sqlite:////tmp/smoke.sqlite3 \
-  -e DJANGO_SECURE_SSL_REDIRECT=False \
-  abj-portal
-
-./deploy/smoke.sh http://127.0.0.1:8011
-docker rm -f portal-smoke
-```
-
-`deploy/smoke.sh` is the same script CI runs against the built container and the
-release workflow runs against production, so all three check the same things. It
-waits for the app to answer, then asserts the routes that are easy to break: the
-SPA shell and a client-side route both reaching `index.html`, an unknown `/api/`
-path still returning `404` rather than HTML, and `/admin/` staying reachable.
-
-`DJANGO_SECURE_SSL_REDIRECT` exists for exactly this and nothing else — leave it
-alone on a real deployment.
+`OPERATIONS.md` has the detail — the release pipeline, rolling back, server
+setup, the shop-rental sync, and the interim arrangements still in force until
+DNS is ready. `INFRASTRUCTURE.md` has the reasoning behind the hosting choices.
