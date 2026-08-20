@@ -22,6 +22,11 @@ npm-debug.log*
 .env.*
 !.env.example
 
+# Secrets the app reads from disk (Google service-account key). The directory
+# is committed so the compose mount works; nothing inside it ever is.
+deploy/secrets/*
+!deploy/secrets/.gitkeep
+
 # Editors / OS
 .idea/
 .vscode/

@@ -17,6 +17,13 @@ services:
     env_file: [.env]
     # No published port: only Caddy may reach gunicorn.
     expose: ["8000"]
+    volumes:
+      # Read-only secrets the app reads from disk rather than the environment —
+      # currently just the Google service-account key the shop-rental sync uses.
+      # A *directory* mount on purpose: it works whether or not the key is there,
+      # so a deployment with no Google setup still starts. The container runs as
+      # uid 10001, so the key must be readable by it — see README.md.
+      - ./secrets:/run/secrets/abj:ro
     networks: [internal]
     logging:
       driver: json-file

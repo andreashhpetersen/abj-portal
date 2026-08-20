@@ -214,29 +214,64 @@ the next sync as a new application.
 3. Open the form's responses spreadsheet and **share it, read-only, with the
    service account's email address** — that share is the only thing granting
    access, and it reaches no other file in the Drive.
-4. Put the key on the server and set:
+4. Put the key on the server at `/opt/abj-portal/secrets/google-sheets.json`.
+   `docker-compose.yml` bind-mounts that directory read-only at
+   `/run/secrets/abj`, so the path the app sees is not the path on the host.
+   The container runs as uid 10001, so make the key readable by it:
+
+       sudo install -d -m 755 /opt/abj-portal/secrets
+       sudo install -o 10001 -g 10001 -m 400 ~/google-sheets.json \
+            /opt/abj-portal/secrets/google-sheets.json
+
+   Then in `/opt/abj-portal/.env`:
 
        SHOPRENTALS_SHEET_ID=<the spreadsheet id from its URL>
-       SHOPRENTALS_GOOGLE_CREDENTIALS=/opt/abj-portal/google-sheets.json
+       SHOPRENTALS_GOOGLE_CREDENTIALS=/run/secrets/abj/google-sheets.json
        SHOPRENTALS_SHEET_RANGE=A:ZZ   # optional; the default reads the first sheet
 
    All three default to empty, so a checkout with no Google setup still boots and
-   tests — `sync_applications` fails with a clear message instead.
-5. Run it on a timer. A systemd timer every five minutes is plenty:
+   tests — `sync_applications` fails with a clear message instead. The mount is a
+   directory rather than the file itself for the same reason: the stack starts
+   whether or not a key is there.
+
+   Locally, point `SHOPRENTALS_GOOGLE_CREDENTIALS` straight at wherever you
+   saved the key — there is no container in the way.
+5. Check it end to end before scheduling anything:
+
+       docker compose run --rm --no-deps app \
+           python manage.py sync_applications --dry-run
+
+   That reads the sheet, reports how many responses it parsed and warns about
+   anything it could not map, and writes nothing. Drop `--dry-run` once it looks
+   right.
+6. Run it on a timer. Every five minutes is plenty:
 
        # /etc/systemd/system/abj-sync-applications.service
+       [Unit]
+       Description=Sync erhvervslejemål applications from Google Forms
+       After=docker.service
        [Service]
        Type=oneshot
        WorkingDirectory=/opt/abj-portal
-       EnvironmentFile=/opt/abj-portal/.env
-       ExecStart=/usr/bin/docker compose run --rm web python manage.py sync_applications
+       ExecStart=/usr/bin/docker compose run --rm --no-deps app \
+           python manage.py sync_applications
 
        # /etc/systemd/system/abj-sync-applications.timer
+       [Unit]
+       Description=Sync erhvervslejemål applications every five minutes
        [Timer]
        OnBootSec=5min
        OnUnitActiveSec=5min
        [Install]
        WantedBy=timers.target
+
+   Then `sudo systemctl enable --now abj-sync-applications.timer`. Compose reads
+   `/opt/abj-portal/.env` itself, so the unit needs no `EnvironmentFile`;
+   `--no-deps` keeps a sync from dragging Caddy up with it, and `run` rather than
+   `exec` means the sync still works when the app container is down.
+
+   Watch it with `journalctl -u abj-sync-applications.service -f`. A failed run
+   needs no intervention — the next one reads the whole sheet again.
 
 `SHOPRENTALS_SHEET_RANGE` deliberately carries no sheet name: Google names the
 responses tab by the form's locale, so "the first sheet" survives both
