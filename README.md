@@ -526,6 +526,11 @@ And from a workstation, against the server's IP:
 env-overridable, so the browser withholds both cookies. `smoke.sh` does not
 authenticate, so its checks still pass — this is expected, not a fault to chase.
 
+The release workflow's own verification is skipped in this state too: it only
+runs when the `PORTAL_DOMAIN` repository variable is set, since without a name
+it could only fail. Deploys therefore go green on having deployed, and start
+proving the site answers the moment that variable exists.
+
 When DNS is ready, undo it in this order:
 
 1. Delete `DJANGO_SECURE_SSL_REDIRECT=False` from `.env`. Leaving it behind is a
@@ -534,6 +539,8 @@ When DNS is ready, undo it in this order:
 3. Re-copy `Caddyfile` from the repository rather than editing it back, so the
    server's copy cannot quietly drift
 4. `docker compose up -d`, then `./deploy/smoke.sh https://DOMAIN`
+5. Set the `PORTAL_DOMAIN` repository variable, which turns the release
+   workflow's verify step back on
 
 ### Smoke-testing the image locally
 

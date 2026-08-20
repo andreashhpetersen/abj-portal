@@ -147,7 +147,14 @@ jobs:
 
       # The same assertions CI ran against the container, now against the real
       # site. A green release therefore means more than "the process started".
+      #
+      # Skipped while PORTAL_DOMAIN is unset, which is the interim state before
+      # DNS exists: there is no name to reach the site by, so this could only
+      # fail, and a release that always ends red teaches everyone to ignore red.
+      # Setting the variable is what switches verification on — see README.md,
+      # "Bringing the server up before DNS is ready".
       - name: Verify the deployment answers
+        if: vars.PORTAL_DOMAIN != ''
         env:
           # The public domain, not DEPLOY_HOST: the certificate and Django's
           # ALLOWED_HOSTS are both bound to the name, not the address.
