@@ -234,32 +234,38 @@ the next sync as a new application.
 5. Put the key on the server at `/opt/abj-portal/secrets/google-sheets.json`.
    `docker-compose.yml` bind-mounts that directory read-only at
    `/run/secrets/abj`, so the path the app sees is not the path on the host.
-   The container runs as uid 10001, so make the key readable by it. Set the
-   owner with `chown` rather than `install -o`: the user is called `portal`
-   inside the image and does not exist on the host at all, and some builds of
-   `install` reject a numeric `-o` outright (`invalid user: '10001'`) where
-   `chown` takes uids happily. The mode is 0400, owner-only, so the *group* does
-   not matter — which is just as well, since the image's `useradd` passes no
-   `--gid` and the group id is therefore not 10001.
+   The container runs as uid 10001, so the key must be readable by it and the
+   directory must be traversable. Piping it in over ssh avoids the key ever
+   sitting in a home directory, and `umask 077` means it is never on disk at a
+   loose mode even briefly:
 
-       sudo install -d -m 755 /opt/abj-portal/secrets
-       sudo install -m 400 ~/google-sheets.json \
-            /opt/abj-portal/secrets/google-sheets.json
-       sudo chown 10001 /opt/abj-portal/secrets/google-sheets.json
-       ls -ln /opt/abj-portal/secrets/     # expect: -r-------- 1 10001 ...
-
-   `install` writes it 0400 from the start, so the key never sits on disk
-   world-readable between being copied and being locked down. Delete the copy in
-   your home directory afterwards — `shred -u ~/google-sheets.json`.
-
-   To avoid staging it in a home directory at all, stream it straight in when
-   logging in as root (no `sudo`, which would fight the key for stdin):
-
-       ssh root@HOST 'set -e
-       install -d -m 755 /opt/abj-portal/secrets
-       install -m 400 /dev/stdin /opt/abj-portal/secrets/google-sheets.json
-       chown 10001 /opt/abj-portal/secrets/google-sheets.json' \
+       ssh root@HOST 'umask 077 \
+         && mkdir -p /opt/abj-portal/secrets \
+         && chmod 755 /opt/abj-portal/secrets \
+         && cat > /opt/abj-portal/secrets/google-sheets.json \
+         && chmod 400 /opt/abj-portal/secrets/google-sheets.json \
+         && chown 10001 /opt/abj-portal/secrets/google-sheets.json \
+         && ls -ln /opt/abj-portal/secrets/' \
          < path/to/google-sheets.json
+
+   Expect `-r-------- 1 10001` — numeric, because `ls -ln` skips the name lookup
+   and 10001 has no name on the host.
+
+   Three things learned the hard way here, all worth keeping:
+
+   * **`chown`, not `install -o`.** The user is `portal` *inside the image* and
+     does not exist on the host, and this server's `install` rejects a numeric
+     owner outright: `invalid user: '10001'`. `chown` takes uids happily.
+   * **`cat`, not `install -m 400 /dev/stdin`.** Older `install` builds refuse a
+     non-regular source file, and the failure is easy to miss in the middle of a
+     chain. `cat` is portable and the `umask` closes the same gap.
+   * **No group.** The mode is owner-only, so the group is irrelevant — and the
+     image's `useradd` passes no `--gid`, so the group id is *not* 10001.
+
+   If you would rather stage it, `scp` it to your own home directory and use
+   `sudo` for the parts that write under `/opt` — `~` is expanded by your local
+   shell before `sudo` runs, so it reads *your* home, not root's. Delete the
+   staged copy afterwards with `shred -u`.
 
    Then in `/opt/abj-portal/.env`:
 
