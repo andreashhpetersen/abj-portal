@@ -236,8 +236,8 @@ would quietly undo the whole point.
 admin, and WhiteNoise serves the built SPA from the same process, so the browser
 sees a single origin and the session and CSRF cookies behave exactly as they do
 behind the Vite proxy. Caddy terminates TLS in front of it. `SERVE_SPA` gates
-the SPA half — off in development, where Vite owns the frontend. See `README.md`
-under *Deployment* for the shape and the pipeline.
+the SPA half — off in development, where Vite owns the frontend. See `OPERATIONS.md`
+for the shape and the release pipeline.
 
 **The SPA catch-all must keep excluding Django's own prefixes.** The last entry
 in `config/urls.py` is `^(?!api/|admin/|static/).*$`. Without that lookahead a

@@ -9,7 +9,7 @@ association ever moves off Google Forms, this is the file that gets replaced.
 Access is a **read-only service account**. Create one, download its JSON key,
 and share the responses spreadsheet with the service account's email address
 exactly as you would share it with a colleague; nothing else grants it access,
-and it can reach no other file in the Drive. See README.md.
+and it can reach no other file in the Drive. See OPERATIONS.md.
 
 The Google client libraries are imported inside the function on purpose: the
 rest of the portal must import and run without them installed, so that a
@@ -64,7 +64,7 @@ def fetch_rows(spreadsheet_id=None, sheet_range=None, credentials_file=None):
         raise ImproperlyConfigured(
             f"Cannot read the service-account key at {credentials_file}: {error}. "
             "In the container this must be the mounted path, and the file must be "
-            "readable by uid 10001 — see README.md."
+            "readable by uid 10001 — see OPERATIONS.md."
         ) from error
     except ValueError as error:
         raise ImproperlyConfigured(

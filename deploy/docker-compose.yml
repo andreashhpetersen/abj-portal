@@ -22,7 +22,7 @@ services:
       # currently just the Google service-account key the shop-rental sync uses.
       # A *directory* mount on purpose: it works whether or not the key is there,
       # so a deployment with no Google setup still starts. The container runs as
-      # uid 10001, so the key must be readable by it — see README.md.
+      # uid 10001, so the key must be readable by it — see OPERATIONS.md.
       - ./secrets:/run/secrets/abj:ro
     networks: [internal]
     logging:
