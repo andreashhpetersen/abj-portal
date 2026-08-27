@@ -386,29 +386,34 @@ Where provisioning actually stands, so this can be picked up cold.
 
 Working already: the database and server exist in `dk-cph1`; Docker, `age` and
 `rclone` are installed; `deploy/` is at `/opt/abj-portal/` with a real `.env`;
-and the stack has been proven end-to-end over plain HTTP against the server's
-IP — registry pull, `migrate` against the managed database, `compose up`, and
-every `deploy/smoke.sh` assertion passing. Only TLS is unproven.
+and the stack is proven end-to-end — registry pull, `migrate` against the
+managed database, `compose up`, and every `deploy/smoke.sh` assertion passing.
+
+**The portal is live at `https://portal.ab-jaeger.dk` as of 27 August 2026.**
+DNS resolves, Caddy holds a Let's Encrypt certificate and redirects `:80`, and
+Django is seeing `X-Forwarded-Proto` correctly — the HSTS header is served, so
+the `SECURE_PROXY_SSL_HEADER` chain works. The interim plain-HTTP arrangement
+is retired and its section is gone from `OPERATIONS.md`.
 
 A push to `main` now deploys by itself: the four `DEPLOY_*` secrets are set, the
 CI key is in the server's `authorized_keys`, and `main` is protected by the
-three CI jobs. The shop-rental sync is live too — the service account, its key
+three CI jobs. The `PORTAL_DOMAIN` variable is set too, so each release now
+runs `deploy/smoke.sh` against the live site before reporting success. The shop-rental sync is live too — the service account, its key
 under `/opt/abj-portal/secrets/`, and a five-minute systemd timer, with the
 association's back catalogue of applications imported.
 
 Remaining, in dependency order:
 
-1. **DNS.** Get access to the `ab-jaeger.dk` zone and add the portal's A
-   record. This is the only thing blocking TLS, the release workflow's verify
-   step, and anyone logging in at all — the session cookies are `Secure`, so
-   the site is unusable over plain HTTP however well it serves. The same access
-   is needed for the Proton mailbox migration (MX, SPF, DKIM, DMARC), so one
-   request unblocks both.
-2. **Undo the interim HTTP configuration** — `OPERATIONS.md`, *Interim: running
-   before DNS is ready*, has the ordered revert list. Leaving
-   `DJANGO_SECURE_SSL_REDIRECT=False` behind is a security regression. Setting
-   the `PORTAL_DOMAIN` variable is the last step, and switches the release
-   workflow's verification back on.
+1. **Confirm the interim HTTP configuration is fully retired.**
+   `DJANGO_SECURE_SSL_REDIRECT=False` must be gone from `/opt/abj-portal/.env`,
+   and this is the one item that cannot be checked from outside: Caddy answers
+   `:80` itself, so Django never sees an insecure request and a lingering
+   override looks exactly like a correct configuration. Check it on the server.
+   `DJANGO_ALLOWED_HOSTS` should be the domain rather than the server's IP, and
+   the server's `Caddyfile` should match this repository's rather than having
+   been edited back by hand.
+2. **Create the first superuser** — nobody can reach `/admin/` until one exists.
+   `OPERATIONS.md`, *Administrative commands*.
 3. **Tighten the database allowlist** to the server's utility-network IP,
    testing connectivity before and after so a failure is unambiguous.
 4. **Harden the server**: swap, firewall limited to 22/80/443, confirm
@@ -418,7 +423,9 @@ Remaining, in dependency order:
    restore-test it. Needed before the first real resident data, not before
    launch.
 6. **Set up Scaleway Transactional Email** and the sending subdomain's SPF,
-   DKIM and DMARC records, before anything in the app sends mail.
+   DKIM and DMARC records, before anything in the app sends mail. The
+   `ab-jaeger.dk` zone access that DNS needed covers the Proton mailbox
+   migration (MX, SPF, DKIM, DMARC) too.
 7. **Rotate the database password** if it has been copied anywhere off the
    server, and consider a dedicated application role rather than `upadmin`,
    which is the cluster administrator.

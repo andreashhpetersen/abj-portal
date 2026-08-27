@@ -1,7 +1,7 @@
 # Operations
 
 Running the portal on a real server: how a release happens, how to set the
-server up from nothing, and the interim arrangements that are still in force.
+server up from nothing, and how to reach the application once it is running.
 
 Three documents, deliberately separate:
 
@@ -86,7 +86,7 @@ Four repository secrets, plus one variable:
 | `DEPLOY_USER`        | SSH user — `root`, see below                              |
 | `DEPLOY_SSH_KEY`     | Passphraseless ed25519 private key, used only by CI       |
 | `DEPLOY_KNOWN_HOSTS` | `known_hosts` lines pinning the server's host key         |
-| `PORTAL_DOMAIN` (var)| Public hostname; also switches release verification on    |
+| `PORTAL_DOMAIN` (var)| Public hostname the release is verified against           |
 
 The key is dedicated to CI and exists nowhere else — the private half is in the
 GitHub secret, the public half in the server's `authorized_keys`. There is no
@@ -143,7 +143,14 @@ Kept as a record of how the current server was built, and what to repeat if one
 is ever rebuilt.
 
 1. Create the cloud server and the Managed PostgreSQL instance, and point the
-   portal's DNS record at the server.
+   portal's DNS record at the server. **Before Caddy first starts**, not after:
+   it asks Let's Encrypt for a certificate the moment it boots with a domain in
+   its site address, and repeated failed challenges are rate-limited. If the
+   record cannot exist yet, give the `Caddyfile` a bare `:80` site address
+   instead of the domain — with no hostname there Caddy skips automatic HTTPS
+   entirely and spends no rate limit. Note that nobody can log in in that state:
+   `prod.py` sets `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` and neither
+   is env-overridable, so the browser withholds both cookies over plain HTTP.
 2. Install Docker, plus `age` and `rclone` for backups.
 3. `docker login ghcr.io` with a token carrying `read:packages`, so the server
    can pull the image.
@@ -273,54 +280,38 @@ Compose reads `/opt/abj-portal/.env` itself, so the unit needs no
 Watch it with `journalctl -u abj-sync-applications.service -f`. A failed run
 needs no intervention — the next one re-reads the whole sheet.
 
-## Interim: running before DNS is ready
+## Administrative commands
 
-**Still in force.** Delete this section once the domain resolves.
+`manage.py` is reached through a throwaway container rather than the serving
+one, so it works whether or not the app container is up:
 
-Caddy asks Let's Encrypt for a certificate the moment it boots with a domain in
-its site address, and Let's Encrypt rate-limits repeated failed challenges — so
-if the DNS record does not exist yet, do not point Caddy at the domain and hope.
-Serve plain HTTP against the server's IP instead. That exercises the registry
-pull, `migrate`, the compose stack and the whole routing contract, leaving only
-TLS untested, so when DNS lands there is one variable left rather than five.
-
-In `/opt/abj-portal/.env`:
-
-```
-DJANGO_ALLOWED_HOSTS=<server ip>
-DJANGO_SECURE_SSL_REDIRECT=False
+```bash
+cd /opt/abj-portal
+docker compose run --rm --no-deps app python manage.py <command>
 ```
 
-Keep `PORTAL_DOMAIN` and `ACME_EMAIL` set even though Caddy will not read the
-domain in this mode: `docker-compose.yml` marks both required and refuses to
-start without them.
+`--no-deps` keeps a one-off command from dragging Caddy up with it, and the
+image bakes `DJANGO_SETTINGS_MODULE=config.settings.prod`, so `manage.py`'s
+development default never applies. Compose reads `/opt/abj-portal/.env` itself,
+so the container gets the real `DATABASE_URL` — this is the live database.
 
-In `/opt/abj-portal/Caddyfile`, replace the site address with a bare port:
+Creating the first administrator needs a terminal on both hops, so `ssh -t` and
+no `-T` on `docker compose run`:
 
+```bash
+ssh -t root@SERVER
+cd /opt/abj-portal
+docker compose run --rm --no-deps app \
+    python manage.py createsuperuser
 ```
-:80 {
-```
 
-With no hostname there, Caddy skips automatic HTTPS altogether, so nothing is
-requested from Let's Encrypt and no rate limit is spent.
+It asks for an **email address**, not a username — `USERNAME_FIELD` is `email`
+and `REQUIRED_FIELDS` is empty. A superuser needs no group membership:
+`User.objects.business_committee()` counts superusers in, so it can already
+reach the shop-rental applications without joining `erhvervsudvalg`.
 
-**Logging in will not work over plain HTTP.** `prod.py` sets
-`SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE`, neither of which is
-env-overridable, so the browser withholds both cookies. `smoke.sh` does not
-authenticate, so its checks still pass — expected, not a fault to chase. The
-release workflow's verification is skipped too, since it only runs when the
-`PORTAL_DOMAIN` variable is set and there is no name to reach the site by.
-
-When DNS is ready, undo it in this order:
-
-1. Delete `DJANGO_SECURE_SSL_REDIRECT=False` from `.env`. Leaving it behind is a
-   genuine security regression, not just untidiness.
-2. Set `DJANGO_ALLOWED_HOSTS` to the domain.
-3. Re-copy `Caddyfile` from the repository rather than editing it back, so the
-   server's copy cannot quietly drift.
-4. `docker compose up -d`, then `./deploy/smoke.sh https://DOMAIN`.
-5. Set the `PORTAL_DOMAIN` repository variable, which turns the release
-   workflow's verify step back on.
+`python manage.py shell` works the same way. Prefer it to `docker compose exec`
+for anything that must run when the container is unhealthy.
 
 ## Smoke-testing the image locally
 

@@ -303,5 +303,5 @@ in front of it. A push to `main` runs the checks, builds the image, and releases
 it to the server.
 
 `OPERATIONS.md` has the detail — the release pipeline, rolling back, server
-setup, the shop-rental sync, and the interim arrangements still in force until
-DNS is ready. `INFRASTRUCTURE.md` has the reasoning behind the hosting choices.
+setup, the shop-rental sync, and how to reach `manage.py` on the server.
+`INFRASTRUCTURE.md` has the reasoning behind the hosting choices.
