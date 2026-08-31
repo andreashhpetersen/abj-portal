@@ -93,6 +93,38 @@ association spans several blocks on more than one street — and `Resident` adds
 floor and door. Use `resident.address` for display rather than reassembling it,
 and `select_related("resident__building")` when listing users.
 
+**Signup is a claim, and a human clears it.** `/api/auth/signup/` is the only
+endpoint an anonymous visitor can write through. It creates the `User` with
+`is_active=False` plus a pending `SignupRequest`, and a board member approves it
+in the admin — which is what lets the portal offer signup before the resident
+import and before transactional email exist, because the approval stands in for
+both. Nothing can log in until someone has looked, so a confirmation link would
+add no security it does not already have.
+
+The claimed address is **free text on `SignupRequest`, never a `Resident` row**:
+`Resident` belongs to the association's other database, `resident_number` is
+unique, and a hand-typed one could collide with the same person's real row when
+the sync arrives. Approval grants a login and nothing else. The claimed resident
+number is deliberately not format-validated — the board reads it, and rejecting a
+mistyped digit teaches the applicant nothing.
+
+`reject()` deletes the provisional account and keeps the request as a record,
+because `User.email` is unique: a pending request otherwise holds an address
+hostage, and someone signing up as a resident who has not got around to it yet
+would lock out the real one. Withdrawing an *approved* account is
+`is_active = False`, not `reject()` — by then it may own bookings a cascade would
+take with it.
+
+Signup answers **the same 202 to everyone** — created, email already known, or
+honeypot filled. Distinguishing them turns the form into a way to ask who lives
+here. The `website` honeypot and the per-IP `signup` throttle scope are the whole
+bot defence, and are enough because an unapproved account can do nothing; note
+the throttle's effective limit is the configured rate times the gunicorn worker
+count, since there is no shared `CACHES`. A CAPTCHA is not an easy option here —
+reCAPTCHA is Google's and Turnstile is Cloudflare's, both against the ownership
+criterion in `INFRASTRUCTURE.md`; Friendly Captcha is the compliant escalation if
+one is ever needed.
+
 **Booking rules live on the model, not in views.** `Event.save()` calls
 `full_clean()` deliberately: DRF's `ModelSerializer` does not, so without it the
 API could store an overlapping booking that the admin would reject. Put new
@@ -279,7 +311,9 @@ Deliberately unresolved — don't quietly pick one while doing something else.
   decides whether `Resident.external_user_id` and `resident_number` should be
   read-only in the admin, whether a `synced_at` field is needed, and what
   happens when someone moves out. Until it is settled, residency is edited by
-  hand in the admin and `external_user_id` is required.
+  hand in the admin and `external_user_id` is required. Signup does **not**
+  settle this: a `SignupRequest` grants a login, deliberately never a `Resident`
+  row, and is compatible with all three answers.
 
 - **What the lawyer actually needs to draft a lease.** `ApplicationDetails` has a
   plausible field set and a `REQUIRED_FOR_CONTRACT` list, both guessed rather

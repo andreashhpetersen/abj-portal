@@ -11,11 +11,16 @@ Two things are deliberately kept apart:
 Modelling it this way keeps the resident fields non-nullable (a Resident row
 cannot exist half-filled) and means an employee account simply has no Resident
 row rather than a spread of empty columns.
+
+`SignupRequest` is a third thing: somebody claiming, from the public signup
+page, that they live here. It is deliberately not a `Resident` — see its
+docstring.
 """
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.core.validators import RegexValidator
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 #: Members of this Django group may access the shop-rental applications.
@@ -209,3 +214,157 @@ class Resident(models.Model):
         if self.door:
             home = f"{home} {self.door}"
         return f"{self.building}, {home}"
+
+
+class SignupRequestStatus(models.TextChoices):
+    PENDING = "pending", _("Afventer godkendelse")
+    APPROVED = "approved", _("Godkendt")
+    REJECTED = "rejected", _("Afvist")
+
+
+class SignupRequest(models.Model):
+    """Somebody claiming, from the public signup page, that they live here.
+
+    A stranger filling in a form cannot be trusted about their own address, so
+    signup creates the `User` **inactive** and a board member approves it. That
+    approval is doing two jobs at once, which is why the portal can offer signup
+    before either of its obvious prerequisites exists:
+
+    * It stands in for the resident import. The board can check a claim against
+      the association's other database by looking, today; what is missing is the
+      automated sync, not the data.
+    * It stands in for email confirmation. A confirmation link proves an address
+      routes to the person signing up; a human comparing a claim to the resident
+      register proves considerably more. Nothing can log in until someone has
+      looked, so an unverified address is not a way in.
+
+    **The claimed address is free text, and lives here rather than on
+    `Resident`.** `Resident` is owned by the association's other database:
+    `external_user_id` is required, and `resident_number` is unique, so a
+    hand-typed number could collide with the same person's real row when the
+    import finally runs. Approval therefore grants a login and nothing more — a
+    newly approved user has no `Resident` row, which the rest of the portal
+    already treats as ordinary (see `User.is_resident`). Attaching residency
+    stays a separate, deliberate act in the admin.
+
+    The claim is not format-validated either. A resident number is copied off a
+    rent statement and mistyped often; refusing the signup teaches the applicant
+    nothing, whereas a board member reading "1-2345-6789" next to a name and an
+    address loses no information at all. The board is the validator here.
+
+    `email` is stored alongside the FK because rejection deletes the provisional
+    account, and the audit row must outlive it — see `reject`.
+    """
+
+    email = models.EmailField(
+        _("email"),
+        help_text=_("Kopi af den oprettede brugers email, så rækken overlever en afvisning."),
+    )
+    user = models.OneToOneField(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="signup_request",
+        verbose_name=_("bruger"),
+        help_text=_("Den inaktive konto, anmodningen oprettede. Tom når anmodningen er afvist."),
+    )
+    claimed_address = models.CharField(
+        _("oplyst adresse"),
+        max_length=255,
+        help_text=_(
+            "Fritekst, som ansøgeren skrev den. Sammenholdes med beboerregistret i hånden."
+        ),
+    )
+    claimed_resident_number = models.CharField(
+        _("oplyst beboernummer"),
+        max_length=32,
+        blank=True,
+        help_text=_("Valgfrit, og bevidst ikke formatvalideret. Hjælper med at finde personen."),
+    )
+    status = models.CharField(
+        _("status"),
+        max_length=16,
+        choices=SignupRequestStatus.choices,
+        default=SignupRequestStatus.PENDING,
+        db_index=True,
+    )
+    created_at = models.DateTimeField(_("oprettet"), auto_now_add=True)
+    status_changed_at = models.DateTimeField(
+        _("status ændret"),
+        null=True,
+        blank=True,
+        help_text=_("Gør det muligt at se, hvor længe en anmodning har ventet."),
+    )
+    reviewed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_signup_requests",
+        verbose_name=_("behandlet af"),
+    )
+    review_note = models.TextField(
+        _("bemærkning"),
+        blank=True,
+        help_text=_("Intern note om beslutningen. Vises ikke for ansøgeren."),
+    )
+
+    class Meta:
+        verbose_name = _("brugeranmodning")
+        verbose_name_plural = _("brugeranmodninger")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.email} ({self.get_status_display()})"
+
+    @property
+    def is_pending(self):
+        return self.status == SignupRequestStatus.PENDING
+
+    def approve(self, *, by=None):
+        """Let the account log in.
+
+        Activation and the audit stamp go together in one call so a board member
+        cannot approve the request and forget the account, or activate the
+        account and leave the request looking unanswered.
+        """
+        if not self.is_pending:
+            raise ValueError("Kun anmodninger, der afventer godkendelse, kan godkendes.")
+        if self.user is None:
+            raise ValueError("Anmodningen har ingen konto at aktivere.")
+        self.user.is_active = True
+        self.user.save(update_fields=["is_active"])
+        self._record(SignupRequestStatus.APPROVED, by=by)
+
+    def reject(self, *, by=None, note=""):
+        """Turn the claim down and delete the account it created.
+
+        Deleting rather than leaving the account inactive forever is what keeps
+        the email address available. `User.email` is unique, so a pending
+        request holds its address hostage: someone signing up as a resident who
+        has not got around to it yet — whether maliciously or by typing the
+        wrong address — would otherwise lock the real resident out of ever
+        registering, and the portal cannot say "that email is taken" without
+        confirming to a stranger who has an account here.
+
+        Only a pending request can be rejected. Withdrawing access from an
+        approved account is `is_active = False` on the user, not this: by then
+        the account may own bookings that a cascade would take with it.
+        """
+        if not self.is_pending:
+            raise ValueError("Kun anmodninger, der afventer godkendelse, kan afvises.")
+        if note:
+            self.review_note = note
+        user, self.user = self.user, None
+        self._record(SignupRequestStatus.REJECTED, by=by)
+        if user is not None:
+            user.delete()
+
+    def _record(self, status, *, by):
+        self.status = status
+        self.status_changed_at = timezone.now()
+        self.reviewed_by = by
+        self.save(
+            update_fields=["status", "status_changed_at", "reviewed_by", "review_note", "user"]
+        )
