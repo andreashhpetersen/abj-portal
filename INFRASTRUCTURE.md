@@ -397,36 +397,30 @@ is retired and its section is gone from `OPERATIONS.md`.
 
 A push to `main` now deploys by itself: the four `DEPLOY_*` secrets are set, the
 CI key is in the server's `authorized_keys`, and `main` is protected by the
-three CI jobs. The `PORTAL_DOMAIN` variable is set too, so each release now
-runs `deploy/smoke.sh` against the live site before reporting success. The shop-rental sync is live too — the service account, its key
-under `/opt/abj-portal/secrets/`, and a five-minute systemd timer, with the
-association's back catalogue of applications imported.
+three CI jobs. The `PORTAL_DOMAIN` variable is set too, so each release runs
+`deploy/smoke.sh` against the live site before reporting success — proven on
+the release of 27 August 2026, the first to reach that step.
+
+The shop-rental sync is live — the service account, its key under
+`/opt/abj-portal/secrets/`, and a five-minute systemd timer, with the
+association's back catalogue of applications imported. An administrator account
+exists, so `/admin/` is reachable.
 
 Remaining, in dependency order:
 
-1. **Confirm the interim HTTP configuration is fully retired.**
-   `DJANGO_SECURE_SSL_REDIRECT=False` must be gone from `/opt/abj-portal/.env`,
-   and this is the one item that cannot be checked from outside: Caddy answers
-   `:80` itself, so Django never sees an insecure request and a lingering
-   override looks exactly like a correct configuration. Check it on the server.
-   `DJANGO_ALLOWED_HOSTS` should be the domain rather than the server's IP, and
-   the server's `Caddyfile` should match this repository's rather than having
-   been edited back by hand.
-2. **Create the first superuser** — nobody can reach `/admin/` until one exists.
-   `OPERATIONS.md`, *Administrative commands*.
-3. **Tighten the database allowlist** to the server's utility-network IP,
+1. **Tighten the database allowlist** to the server's utility-network IP,
    testing connectivity before and after so a failure is unambiguous.
-4. **Harden the server**: swap, firewall limited to 22/80/443, confirm
+2. **Harden the server**: swap, firewall limited to 22/80/443, confirm
    `unattended-upgrades` is active, SSH keys only.
-5. **Choose a backup destination** (see *Where backups go*), fill the
+3. **Choose a backup destination** (see *Where backups go*), fill the
    `BACKUP_*` values, run `backup.sh` by hand once, then schedule it — and
    restore-test it. Needed before the first real resident data, not before
    launch.
-6. **Set up Scaleway Transactional Email** and the sending subdomain's SPF,
+4. **Set up Scaleway Transactional Email** and the sending subdomain's SPF,
    DKIM and DMARC records, before anything in the app sends mail. The
    `ab-jaeger.dk` zone access that DNS needed covers the Proton mailbox
    migration (MX, SPF, DKIM, DMARC) too.
-7. **Rotate the database password** if it has been copied anywhere off the
+5. **Rotate the database password** if it has been copied anywhere off the
    server, and consider a dedicated application role rather than `upadmin`,
    which is the cluster administrator.
 
