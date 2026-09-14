@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import { fieldErrors } from '../api/bookings'
+import { fieldErrors } from '../api/client'
 import {
   STATUS_LABELS,
   STATUS_ORDER,

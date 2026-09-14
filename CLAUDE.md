@@ -108,6 +108,20 @@ the sync arrives. Approval grants a login and nothing else. The claimed resident
 number is deliberately not format-validated — the board reads it, and rejecting a
 mistyped digit teaches the applicant nothing.
 
+**The signup page is for residents, so the resident number is required**
+(`phone` is the only optional field). Someone with no number to give is an
+employee or a third-party manager, and the board creates those accounts in the
+admin — the only place that can grant more than a login anyway. Required but
+unvalidated is the deliberate combination: without a number the board has only
+an address, which can match a flat with two names on the door. The column stays
+`blank=True` so a request the board enters by hand is still valid.
+
+A field error is the one answer signup gives other than the uniform 202, and it
+is safe to: it describes what the submitter typed, not who already has an
+account here. The frontend states the password rules up front rather than
+letting `AUTH_PASSWORD_VALIDATORS` reject four times in a row — `SignupPage`
+restates that setting and has to be kept in step with it.
+
 `reject()` deletes the provisional account and keeps the request as a record,
 because `User.email` is unique: a pending request otherwise holds an address
 hostage, and someone signing up as a resident who has not got around to it yet

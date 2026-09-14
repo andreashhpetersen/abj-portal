@@ -85,11 +85,27 @@ def test_signup_stores_the_address_as_a_claim_and_not_as_residency(client, db):
     assert Building.objects.count() == 0
 
 
-def test_signup_needs_no_login_and_no_resident_number(client, db):
-    response = signup(client, resident_number="", phone="")
+def test_signup_needs_no_login_and_no_phone_number(client, db):
+    """Phone is the one optional field: it is a convenience, not a claim."""
+    response = signup(client, phone="")
 
     assert response.status_code == 202
-    assert SignupRequest.objects.get().claimed_resident_number == ""
+    assert SignupRequest.objects.get().user.phone == ""
+
+
+def test_signup_without_a_resident_number_is_rejected(client, db):
+    """The form is for residents, and the number is how the board finds them.
+
+    A field error is the one thing signup answers other than the uniform 202,
+    and it is safe to: it describes what the submitter typed, not who already
+    has an account here.
+    """
+    response = signup(client, resident_number="")
+
+    assert response.status_code == 400
+    assert "beboernummer" in response.json()["resident_number"][0]
+    assert User.objects.count() == 0
+    assert SignupRequest.objects.count() == 0
 
 
 def test_a_pending_account_cannot_log_in(client, db):

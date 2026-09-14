@@ -1,6 +1,6 @@
 /** Typed access to /api/bookings/. Mirrors the DRF serializers. */
 
-import { ApiError, api } from './client'
+import { api } from './client'
 
 export type EventCategory = 'private' | 'public'
 export type Frequency = 'daily' | 'weekly' | 'monthly'
@@ -68,19 +68,4 @@ export const bookings = {
   createSeries: (series: NewSeries) =>
     api.post<{ id: number; occurrences: BookingEvent[] }>('/bookings/series/', series),
   policy: () => api.get<BookingPolicy>('/bookings/settings/'),
-}
-
-/**
- * DRF reports validation failures as { field: ["message", ...] }. Flatten that
- * into one message per field so a form can show them next to their inputs.
- */
-export function fieldErrors(error: unknown): Record<string, string> {
-  if (!(error instanceof ApiError) || error.status !== 400 || typeof error.data !== 'object') {
-    return {}
-  }
-  const flattened: Record<string, string> = {}
-  for (const [field, messages] of Object.entries(error.data as Record<string, unknown>)) {
-    flattened[field] = Array.isArray(messages) ? messages.join(' ') : String(messages)
-  }
-  return flattened
 }

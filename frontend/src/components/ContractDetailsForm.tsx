@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react'
 
-import { fieldErrors } from '../api/bookings'
+import { fieldErrors } from '../api/client'
 import { shopRentals } from '../api/shoprentals'
 import { formatDate } from '../lib/dates'
 

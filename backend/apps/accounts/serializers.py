@@ -87,6 +87,19 @@ class SignupSerializer(serializers.Serializer):
     duplicate is handled in the view instead, by accepting the request and
     quietly doing nothing.
 
+    **This form is for residents, so `resident_number` is required** — the only
+    optional field is `phone`. It is still not format-validated: the board reads
+    it, and a mistyped digit next to a name and an address costs them nothing,
+    whereas a rejected signup teaches the applicant nothing. Requiring it is
+    about the board being able to find the person at all; an address alone can
+    match a flat with two names on the door, and the number is what resolves
+    that in one lookup rather than a phone call.
+
+    Employees and third-party managers therefore do not sign up here. They have
+    no resident number to give, and they are few enough and known enough that
+    the board creates their accounts in the admin — which is also the only place
+    that can grant them anything beyond a login.
+
     `website` is a honeypot. It is not a real field, no template renders it
     visibly, and a human never fills it in; a form-filling bot fills everything
     it finds. Checking it costs one comparison and removes the entire
@@ -102,7 +115,11 @@ class SignupSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
     address = serializers.CharField(max_length=255)
     resident_number = serializers.CharField(
-        max_length=32, required=False, allow_blank=True, default=""
+        max_length=32,
+        error_messages={
+            "blank": "Skriv dit beboernummer. Det står på din huslejeopkrævning.",
+            "required": "Skriv dit beboernummer. Det står på din huslejeopkrævning.",
+        },
     )
     password = serializers.CharField(style={"input_type": "password"}, trim_whitespace=False)
     website = serializers.CharField(required=False, allow_blank=True, default="")

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 
 import type { BookingPolicy, EventCategory, Frequency } from '../api/bookings'
-import { bookings, fieldErrors } from '../api/bookings'
+import { bookings } from '../api/bookings'
+import { fieldErrors } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { TIME_SLOTS, WEEKDAY_NAMES, combineLocal, daysFromToday, weekdayOf } from '../lib/dates'
 

@@ -5,6 +5,7 @@ import { Layout } from './components/Layout'
 import { CalendarPage } from './pages/CalendarPage'
 import { LoginPage } from './pages/LoginPage'
 import { ShopRentalsPage } from './pages/ShopRentalsPage'
+import { SignupPage } from './pages/SignupPage'
 
 import type { ReactElement } from 'react'
 
@@ -33,6 +34,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
           <Route
             element={
               <RequireAuth>

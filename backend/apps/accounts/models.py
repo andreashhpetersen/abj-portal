@@ -252,6 +252,13 @@ class SignupRequest(models.Model):
     nothing, whereas a board member reading "1-2345-6789" next to a name and an
     address loses no information at all. The board is the validator here.
 
+    The signup form does require a resident number, because the form is for
+    residents: someone with no number to give is an employee or a third-party
+    manager, and the board creates those accounts in the admin instead. The
+    column stays `blank=True` all the same — it records what a request arrived
+    with, and a board member entering one by hand from a phone call should not
+    be blocked by a field the applicant never filled in.
+
     `email` is stored alongside the FK because rejection deletes the provisional
     account, and the audit row must outlive it — see `reject`.
     """
@@ -280,7 +287,10 @@ class SignupRequest(models.Model):
         _("oplyst beboernummer"),
         max_length=32,
         blank=True,
-        help_text=_("Valgfrit, og bevidst ikke formatvalideret. Hjælper med at finde personen."),
+        help_text=_(
+            "Krævet på tilmeldingssiden, men bevidst ikke formatvalideret. "
+            "Bruges til at finde personen i beboerregistret."
+        ),
     )
     status = models.CharField(
         _("status"),
