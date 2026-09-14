@@ -1,0 +1,58 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{# The upload page for INNA's resident register. Deliberately plain: it is used
+   a handful of times a year by people who do not live in the admin, so the
+   explanation of what the import does carries more weight than the form. #}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate "Hjem" %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='accounts' %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url 'admin:accounts_registerentry_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; {{ title }}
+  </div>
+{% endblock %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  {% if notes %}
+    <div class="results" style="margin-bottom:1.5em">
+      <ul class="messagelist" style="margin-left:0">
+        {% for note in notes %}
+          <li class="{{ note.level }}">{{ note.text }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <p class="help" style="max-width:44em">
+    {% blocktranslate trimmed %}
+      Hent beboerudtrækket som CSV hos INNA og læg det op her. Portalen
+      sammenholder det med sine egne rækker: nye beboere kommer til, ændringer
+      slår igennem, og ingen bliver slettet. Personer, der er forsvundet fra
+      udtrækket, bliver markeret som fraflyttet, men deres konti og bookinger
+      røres ikke.
+    {% endblocktranslate %}
+  </p>
+  <p class="help" style="max-width:44em">
+    {% blocktranslate trimmed %}
+      Det kan køres så mange gange, du vil — det samme udtræk to gange ændrer
+      ingenting. Filen gemmes ikke på serveren.
+    {% endblocktranslate %}
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      {{ form.as_div }}
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" class="default" value="{% translate 'Læs filen' %}">
+      <a href="{% url 'admin:accounts_registerentry_changelist' %}" class="closelink">
+        {% translate "Tilbage til registret" %}
+      </a>
+    </div>
+  </form>
+{% endblock %}

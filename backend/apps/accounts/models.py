@@ -338,6 +338,13 @@ class RegisterEntry(models.Model):
         verbose_name = _("beboerregisterrække")
         verbose_name_plural = _("beboerregister")
         ordering = ["unit_number", "name_key"]
+        # Its own permission rather than `change_registerentry`, because the two
+        # are not the same thing: every column here is read-only in the admin,
+        # and what this grants is the right to replace the whole register from a
+        # file — and with it, who the portal lets in without asking anybody.
+        # Separate so the board can hand it to the person who actually fetches
+        # the export, without handing over the rest of the admin.
+        permissions = [("import_register", _("Kan importere beboerregistret fra en fil"))]
         constraints = [
             models.UniqueConstraint(
                 fields=["unit_number", "name_key"],

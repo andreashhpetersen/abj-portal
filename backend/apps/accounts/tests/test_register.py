@@ -440,7 +440,7 @@ def test_a_dry_run_writes_nothing(db, capsys):
     call_command("import_residents", str(SAMPLE), "--dry-run")
 
     assert RegisterEntry.objects.count() == 0
-    assert "Tørkørsel" in capsys.readouterr().out
+    assert "Prøvekørsel" in capsys.readouterr().out
 
 
 def test_the_command_approves_the_signups_the_register_now_knows(client, db, capsys):
@@ -466,7 +466,7 @@ def test_the_command_refuses_a_file_that_is_not_the_register(db, tmp_path):
     wrong = tmp_path / "noget-andet.csv"
     wrong.write_text("Navn,Email\nAne Bang,ane@example.dk\n", encoding="utf-8")
 
-    with pytest.raises(CommandError, match="Ingen kolonne genkendt"):
+    with pytest.raises(CommandError, match="mangler de kolonner"):
         call_command("import_residents", str(wrong))
 
 

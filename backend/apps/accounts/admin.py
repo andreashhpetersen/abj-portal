@@ -1,8 +1,12 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.core.exceptions import PermissionDenied
+from django.shortcuts import redirect, render
+from django.urls import path, reverse
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
 
+from .forms import RegisterUploadForm
 from .models import (
     Building,
     RegisterEntry,
@@ -11,7 +15,27 @@ from .models import (
     SignupRequestStatus,
     User,
 )
-from .register import match_claim
+from .register import (
+    INFO,
+    SUCCESS,
+    WARNING,
+    dry_run_notes,
+    header_notes,
+    match_claim,
+    outcome_notes,
+    parse_rows,
+    run_import,
+)
+
+#: A `register.Note` level as the admin's message framework spells it. The
+#: import's warnings are not errors — every real export produces a few — so they
+#: land as warnings rather than as a red banner that invites undoing something
+#: that worked.
+LEVELS = {
+    SUCCESS: messages.SUCCESS,
+    INFO: messages.INFO,
+    WARNING: messages.WARNING,
+}
 
 
 class ResidentInline(admin.StackedInline):
@@ -310,6 +334,8 @@ class RegisterEntryAdmin(admin.ModelAdmin):
         ),
     )
 
+    change_list_template = "admin/accounts/registerentry/change_list.html"
+
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("building")
 
@@ -318,6 +344,72 @@ class RegisterEntryAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+    def has_import_permission(self, request):
+        """Its own permission, not `change`: see `RegisterEntry.Meta`."""
+        return request.user.has_perm("accounts.import_register")
+
+    def get_urls(self):
+        return [
+            path(
+                "import/",
+                self.admin_site.admin_view(self.import_view),
+                name="accounts_registerentry_import",
+            ),
+            *super().get_urls(),
+        ]
+
+    def changelist_view(self, request, extra_context=None):
+        """Show the import link only to somebody who may use it."""
+        return super().changelist_view(
+            request,
+            {**(extra_context or {}), "has_import_permission": self.has_import_permission(request)},
+        )
+
+    def import_view(self, request):
+        """Upload an export of the register and reconcile it.
+
+        The file is read in the form and never stored: `RegisterEntry` rows are
+        what an upload leaves behind, and the export itself — six hundred
+        people's names, emails and home addresses — is gone when the request
+        ends. That is also why a dry run cannot simply be confirmed with a
+        second click: there would be nothing left to confirm against, and the
+        alternative is keeping the file somewhere, which is the thing being
+        avoided. Ticking the box off and choosing the file again is the price,
+        and this is done a handful of times a year.
+
+        A real import redirects to the changelist with the report in messages,
+        so a refresh cannot run it twice. A dry run does not, because its report
+        is the whole output and the form should still be there underneath it.
+        """
+        if not self.has_import_permission(request):
+            raise PermissionDenied
+
+        form = RegisterUploadForm(request.POST or None, request.FILES or None)
+        notes = []
+        if request.method == "POST" and form.is_valid():
+            header, rows = form.cleaned_data["file"]
+            notes = header_notes(header)
+            if form.cleaned_data["dry_run"]:
+                parsed, skipped = parse_rows(header, rows)
+                notes += dry_run_notes(parsed, skipped)
+            else:
+                notes += outcome_notes(run_import(header, rows))
+                for note in notes:
+                    self.message_user(request, note.text, LEVELS[note.level])
+                return redirect(reverse("admin:accounts_registerentry_changelist"))
+
+        return render(
+            request,
+            "admin/accounts/registerentry/import.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": _("Importér beboerregister"),
+                "opts": self.model._meta,
+                "form": form,
+                "notes": notes,
+            },
+        )
 
     @admin.display(description=_("navn"), ordering="last_name")
     def full_name(self, obj):

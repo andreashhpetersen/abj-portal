@@ -102,16 +102,38 @@ real register contains `1-1121-409-2` and `1-1121-5007-10` beside the usual
 shape. There is no id-of-this-person-elsewhere column, because the register has
 none to give.
 
-**The resident register is imported, not synced.** `manage.py
-import_residents <file.csv>` reads an export from INNA (the administration
-company, Cobblestone under its old name — hence `Role hos CS`) and reconciles it
-into `RegisterEntry`. INNA has no API, so a board member downloads the file by
-hand; there is no timer. Everything interesting lives in
-`apps/accounts/register.py`, which takes a header and rows from anywhere — that
-seam is what makes the import testable without a real dump, and a real dump is
-six hundred people's names, emails and home addresses. Dumps live in
-`backend/data/register/`, gitignored *and* dockerignored; the only register data
-in the repo is the invented `apps/accounts/tests/data/register_sample.csv`.
+**The resident register is imported, not synced.** An export from INNA (the
+administration company, Cobblestone under its old name — hence `Role hos CS`) is
+reconciled into `RegisterEntry`. INNA has no API, so somebody fetches the file by
+hand and there is no timer.
+
+**The board uploads it in the admin; the management command is the same import
+for anyone with a shell.** The people who can get the export out of INNA are not
+the people with SSH, so *Beboerregister → Importér beboerregister* is the real
+route and `manage.py import_residents <file.csv>` is the fallback. Both go
+through `register.run_import`, and both render `register.*_notes`, so they say
+the same thing about the same file — put new diagnostics there, not in either
+caller. The upload is gated on its own `import_register` permission rather than
+`change_registerentry`: every column here is read-only, and what it grants is
+replacing the register wholesale, and with it who the portal admits.
+
+**The export is never stored.** An upload is read out of the request and dropped;
+`csvsource.MAX_BYTES` keeps it under `FILE_UPLOAD_MAX_MEMORY_SIZE` so it does not
+even spill to a temporary file. That is why a dry run cannot be confirmed with a
+second click — there would be nothing left to confirm against — and the cost, one
+extra file-picker, is the right trade for not having six hundred residents'
+details sitting on a disk. `backend/data/register/` is for local development
+only, gitignored *and* dockerignored; the only register data in the repo is the
+invented `apps/accounts/tests/data/register_sample.csv`.
+
+**Three modules, one seam each.** `csvsource.py` is the only code that knows the
+register arrives as a CSV — the counterpart of `shoprentals/sheets.py`, and what
+changes the day INNA offers an API. It detects the encoding and separator rather
+than asking, by trying combinations until the required columns appear, because a
+file re-saved in Excel on a Danish machine is cp1252 with semicolons and the
+person uploading should not have to know that. `register.py` takes a header and
+rows from anywhere, which is what makes all of it testable without a real dump.
+`forms.py` turns a bad file into a field error next to the input.
 
 **A `RegisterEntry` is not an account, and the import creates none.** Most of
 the register has never opened the portal and thirty flats have no email address

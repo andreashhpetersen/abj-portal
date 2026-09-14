@@ -61,6 +61,7 @@ from .models import (
     Resident,
     SignupRequest,
     SignupRequestStatus,
+    User,
     resident_number_validator,
     unit_number_validator,
 )
@@ -164,6 +165,48 @@ def _alias_lookup():
 
 
 ALIAS_TO_FIELD = _alias_lookup()
+
+#: Columns without which an export cannot be used at all. Everything else is
+#: optional — a missing `Tlf. Nr.` costs a phone number, a missing `Bolignr.`
+#: costs the identity of every row in the file.
+#:
+#: Also what tells a register export from any other CSV, which is how
+#: `csvsource` picks the encoding and separator: the combination that makes
+#: these five appear is the one that read the file correctly.
+REQUIRED_FIELDS = ("unit_number", "raw_address", "resident_number", "unit_type", "role")
+
+
+def recognised_fields(header):
+    """The fields this module can fill in from the given header row."""
+    return {
+        ALIAS_TO_FIELD[column]
+        for cell in header
+        if (column := normalise_header(cell)) in ALIAS_TO_FIELD
+    }
+
+
+def missing_required_fields(header):
+    """Required fields the header does not supply, in a readable order.
+
+    Empty means the file is a register export that can be imported. Non-empty
+    is the one failure that otherwise looks like success — a renamed column
+    imports cleanly and quietly stops recognising who lives here.
+    """
+    found = recognised_fields(header)
+    return [name for name in REQUIRED_FIELDS if name not in found]
+
+
+def unrecognised_headers(header):
+    """Columns the portal has no use for. Reported, never an error.
+
+    A new question in the export costs nothing; this exists so that a *renamed*
+    one is visible next to the fields that went missing.
+    """
+    return [
+        str(cell)
+        for cell in header
+        if str(cell).strip() and normalise_header(cell) not in ALIAS_TO_FIELD
+    ]
 
 
 def name_key(*parts):
@@ -761,3 +804,255 @@ def attach_residency(user, entry):
         setattr(resident, name, value)
     resident.save(update_fields=list(values))
     return resident
+
+
+# --------------------------------------------------------------------------
+# Running an import, and saying what it did
+#
+# Both callers — `manage.py import_residents` and the admin's upload page — go
+# through here, so a board member uploading a file and a developer with a shell
+# see the same diagnostics about the same file. The Danish lives here rather
+# than in either caller for exactly that reason.
+# --------------------------------------------------------------------------
+
+
+#: How loudly to say a thing. `warning` is not an error: every real import
+#: produces a few, because storage rooms have unreadable addresses and the
+#: caretakers have no unit number.
+SUCCESS, INFO, WARNING = "success", "info", "warning"
+
+
+@dataclass
+class Note:
+    """One line of an import's report."""
+
+    level: str
+    text: str
+
+
+@dataclass
+class ImportOutcome:
+    """Everything one run of the import changed."""
+
+    result: ImportResult
+    approved: list = field(default_factory=list)
+    linked: list = field(default_factory=list)
+
+
+@transaction.atomic
+def run_import(header, rows, *, first_data_row=2):
+    """Import an export and follow through on what it implies.
+
+    One transaction over all three steps. The follow-through is not a separate
+    convenience: a register that has just learnt about a flat, and a pending
+    signup for that flat still sitting in the queue, is a state nobody should
+    have to notice and act on by hand.
+    """
+    parsed, skipped = parse_rows(header, rows, first_data_row=first_data_row)
+    outcome = ImportOutcome(result=import_rows(parsed, skipped))
+    outcome.approved = approve_pending_requests()
+    outcome.linked = link_users_without_residency()
+    return outcome
+
+
+def approve_pending_requests():
+    """Let through any pending signup the register now vouches for.
+
+    Somebody who signed up the week before their flat reached the export should
+    not wait in the queue for a human to notice that it has since arrived.
+    Returns the email addresses approved.
+    """
+    return [
+        request.email
+        for request in pending_requests_to_approve()
+        if auto_approve(request) is not None
+    ]
+
+
+def link_users_without_residency():
+    """Give a residency to accounts that predate the register.
+
+    Matched on email, only where exactly one eligible entry has it, and only for
+    users with no `Resident` row at all — a residency somebody corrected by hand
+    is not the import's to overwrite. These are accounts a board member created
+    themselves, so the address is what was missing, not the vouching.
+
+    Two entries sharing an address is one person listed against two units, which
+    is a question for the board rather than an address to guess at.
+    """
+    linked = []
+    for user in User.objects.filter(resident__isnull=True).exclude(email=""):
+        matches = list(RegisterEntry.objects.eligible().filter(email__iexact=user.email)[:2])
+        if len(matches) != 1 or attach_residency(user, matches[0]) is None:
+            continue
+        linked.append(user.email)
+    return linked
+
+
+def header_notes(header):
+    """What the portal made of the columns. Never fatal on its own."""
+    unknown = unrecognised_headers(header)
+    if not unknown:
+        return []
+    return [
+        Note(INFO, _("Kolonner uden betydning for portalen, ignoreret: %s.") % ", ".join(unknown))
+    ]
+
+
+def dry_run_notes(rows, skipped):
+    """The report for a run that wrote nothing."""
+    eligible = sum(1 for row in rows if row.is_eligible)
+    notes = [
+        Note(
+            SUCCESS,
+            _(
+                "Prøvekørsel: %(rows)d rækker læst, %(eligible)d kan aktivere en konto, "
+                "%(skipped)d linjer sprunget over. Intet er gemt."
+            )
+            % {"rows": len(rows), "eligible": eligible, "skipped": len(skipped)},
+        )
+    ]
+    return notes + diagnostic_notes(
+        skipped_rows=skipped,
+        unparsed_addresses=[
+            (row.source_row, row.raw_address) for row in rows if row.address is None
+        ],
+        unclassified=unclassified_rows(rows),
+    )
+
+
+def outcome_notes(outcome):
+    """The report for a run that wrote."""
+    result = outcome.result
+    notes = [
+        Note(
+            SUCCESS,
+            _(
+                "%(created)d nye, %(updated)d opdaterede, %(unchanged)d uændrede "
+                "(%(total)d i alt). %(eligible)d kan aktivere en konto."
+            )
+            % {
+                "created": result.created,
+                "updated": result.updated,
+                "unchanged": result.unchanged,
+                "total": result.total,
+                "eligible": RegisterEntry.objects.eligible().count(),
+            },
+        )
+    ]
+    if result.returned:
+        notes.append(Note(INFO, _("%d række(r) er dukket op i registret igen.") % result.returned))
+    if outcome.approved:
+        notes.append(
+            Note(
+                SUCCESS,
+                _(
+                    "%(count)d ventende tilmelding(er) godkendt automatisk, fordi registret nu "
+                    "kender dem: %(emails)s"
+                )
+                % {"count": len(outcome.approved), "emails": ", ".join(outcome.approved)},
+            )
+        )
+    if outcome.linked:
+        notes.append(
+            Note(
+                SUCCESS,
+                _("%(count)d eksisterende konto(er) har fået tilknyttet en bolig: %(emails)s")
+                % {"count": len(outcome.linked), "emails": ", ".join(outcome.linked)},
+            )
+        )
+    if result.departed:
+        notes.append(
+            Note(
+                WARNING,
+                _(
+                    "%d række(r) står ikke længere i registret og er markeret som fraflyttet. "
+                    "Deres konti er urørte — se dem efter, og deaktivér dem, der er flyttet."
+                )
+                % result.departed,
+            )
+        )
+    if result.buildings_created:
+        notes.append(
+            Note(
+                WARNING,
+                _(
+                    "Nye opgange oprettet: %s. Tjek at de er rigtige og ikke en stavefejl i en "
+                    "adresse."
+                )
+                % ", ".join(result.buildings_created),
+            )
+        )
+    return notes + diagnostic_notes(
+        skipped_rows=result.skipped_rows,
+        unparsed_addresses=result.unparsed_addresses,
+        unclassified=result.unclassified,
+    )
+
+
+def diagnostic_notes(*, skipped_rows=(), unparsed_addresses=(), unclassified=()):
+    """The three warnings every import can produce, worded once.
+
+    All three are normal in small numbers and alarming in large ones, so each
+    says what a long list would mean — that is the whole value of reading them.
+    """
+    notes = []
+    if skipped_rows:
+        notes.append(
+            Note(
+                WARNING,
+                _(
+                    "Sprang linje(r) %s over: intet brugbart bolignr., så rækken kan ikke få en "
+                    "stabil identitet. Viceværterne står sådan i registret og hører hjemme som "
+                    "almindelige medarbejderkonti i stedet."
+                )
+                % ", ".join(str(line) for line in skipped_rows),
+            )
+        )
+    if unparsed_addresses:
+        notes.append(
+            Note(
+                WARNING,
+                _(
+                    "%(count)d adresse(r) kunne ikke læses som en bolig og kan derfor ikke "
+                    "aktivere en konto: %(shown)s. Kælder- og depotrum hører til her; en "
+                    "lejlighed gør ikke."
+                )
+                % {
+                    "count": len(unparsed_addresses),
+                    # No `repr()`: its quotes come out as `&#x27;` in the admin,
+                    # and the addresses are stripped, so there is nothing for
+                    # quoting to reveal.
+                    "shown": _elided(
+                        f"linje {line}: {address}" for line, address in unparsed_addresses
+                    ),
+                },
+            )
+        )
+    if unclassified:
+        notes.append(
+            Note(
+                WARNING,
+                _(
+                    "%(count)d række(r) har beboernr. og en læsbar boligadresse, men tæller ikke "
+                    "som en bolig: %(shown)s. De kan stadig tilmelde sig — deres anmodning "
+                    "venter bare på bestyrelsen. Er listen lang, har registret skiftet navn på "
+                    "enhedstyperne."
+                )
+                % {
+                    "count": len(unclassified),
+                    "shown": _elided(
+                        f"linje {line}: {name} ({unit_type or 'ingen enhedstype'}), {address}"
+                        for line, name, unit_type, address in unclassified
+                    ),
+                },
+            )
+        )
+    return notes
+
+
+def _elided(items, limit=10):
+    """Join a report's examples, keeping it to a line somebody will read."""
+    shown = list(items)
+    joined = "; ".join(shown[:limit])
+    return f"{joined} (+{len(shown) - limit} flere)" if len(shown) > limit else joined
