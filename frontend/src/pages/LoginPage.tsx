@@ -60,6 +60,9 @@ export function LoginPage() {
           {submitting ? 'Logger ind…' : 'Log ind'}
         </button>
         <p className="hint">
+          <Link to="/forgot-password">Glemt adgangskode?</Link>
+        </p>
+        <p className="hint">
           Bor du her og mangler en bruger? <Link to="/signup">Opret dig</Link>
         </p>
       </form>

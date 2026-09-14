@@ -8,6 +8,16 @@ urlpatterns = [
     path("csrf/", views.CSRFView.as_view(), name="csrf"),
     path("login/", views.LoginView.as_view(), name="login"),
     path("signup/", views.SignupView.as_view(), name="signup"),
+    path(
+        "password-reset/",
+        views.PasswordResetRequestView.as_view(),
+        name="password-reset",
+    ),
+    path(
+        "password-reset/confirm/",
+        views.PasswordResetConfirmView.as_view(),
+        name="password-reset-confirm",
+    ),
     path("logout/", views.LogoutView.as_view(), name="logout"),
     path("me/", views.CurrentUserView.as_view(), name="me"),
 ]

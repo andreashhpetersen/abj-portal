@@ -247,16 +247,27 @@ it. MailerSend (Lithuanian) is a reasonable fallback.
 
 ### Deliverability
 
-Two senders will share `ab-jaeger.dk`. Send the app's mail from a
-subdomain — `varsel.ab-jaeger.dk` or similar — so automated sending
-reputation stays isolated from the board's human correspondence, and set up
-SPF, DKIM and DMARC for both. Getting this wrong is the usual reason portal
-email lands in spam.
+Two senders share `ab-jaeger.dk`. The app sends from its own subdomain,
+`varsel.ab-jaeger.dk`, so automated sending reputation stays isolated from
+the board's human correspondence. Getting this wrong is the usual reason
+portal email lands in spam.
 
-There is no production email configuration yet: `config/settings/dev.py`
-sets the console backend and nothing else exists. When the provider is
-live, the SMTP settings and `DEFAULT_FROM_EMAIL` belong in
-`config/settings/base.py`, read from environment variables.
+That subdomain is verified at Scaleway as of September 2026: SPF, DKIM,
+DMARC (`p=none` for now — monitoring only, tighten once delivery is proven)
+and the "blackhole" MX Scaleway uses for bounce handling are all live at
+one.com, alongside the association's existing apex-domain mail — the two
+don't conflict, since one is scoped to a subdomain the board never sends
+human mail from.
+
+`config/settings/base.py` reads the SMTP settings and `DEFAULT_FROM_EMAIL`
+from environment variables (`config/settings/dev.py` overrides the backend
+to console regardless, so local `runserver` is unaffected); `.env.example`
+documents them. The SMTP username is the domain's Scaleway ID; the password
+is a Scaleway API secret key scoped to nothing but this — deliberately not
+also used for Object Storage — with a 1-year expiry rather than "never", so
+a leaked credential doesn't stay valid indefinitely. That means it needs
+rotating roughly annually: see *Still to do* for the date and what breaks
+silently if it lapses.
 
 ## Google, for the shop-rental form
 
@@ -416,10 +427,17 @@ Remaining, in dependency order:
    `BACKUP_*` values, run `backup.sh` by hand once, then schedule it — and
    restore-test it. Needed before the first real resident data, not before
    launch.
-4. **Set up Scaleway Transactional Email** and the sending subdomain's SPF,
-   DKIM and DMARC records, before anything in the app sends mail. The
-   `ab-jaeger.dk` zone access that DNS needed covers the Proton mailbox
-   migration (MX, SPF, DKIM, DMARC) too.
+4. **Put the Scaleway Transactional Email credentials into
+   `/opt/abj-portal/.env`.** The sending subdomain (`varsel.ab-jaeger.dk`) is
+   verified at Scaleway — SPF, DKIM, DMARC and the blackhole MX are live at
+   one.com — and SMTP credentials exist and were confirmed working with a real
+   test send. What's left is production-only: copy `DJANGO_EMAIL_HOST_USER`
+   and `DJANGO_EMAIL_HOST_PASSWORD` into the server's `.env` alongside
+   `DJANGO_EMAIL_HOST`, `DJANGO_EMAIL_PORT` and `DJANGO_DEFAULT_FROM_EMAIL`.
+   The API secret key expires around September 2027 (1-year expiry, chosen
+   deliberately over "never" — see *Deliverability* above) — rotate it before
+   then, or outgoing mail stops with no obvious symptom besides "nobody got
+   their password reset."
 5. **Rotate the database password** if it has been copied anywhere off the
    server, and consider a dedicated application role rather than `upadmin`,
    which is the cluster administrator.

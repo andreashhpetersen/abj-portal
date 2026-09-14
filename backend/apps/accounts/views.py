@@ -18,9 +18,16 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from .emails import send_password_reset_email, send_signup_pending_notification
 from .models import User
 from .register import auto_approve
-from .serializers import LoginSerializer, SignupSerializer, UserSerializer
+from .serializers import (
+    LoginSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+    SignupSerializer,
+    UserSerializer,
+)
 
 #: The only thing signup ever answers. Identical whether an account was created
 #: and activated on the spot, created and left for the board, the email was
@@ -36,6 +43,14 @@ SIGNUP_RECEIVED = _(
     "Tak. Prøv at logge ind med det samme — står du i foreningens beboerregister, "
     "er din konto allerede klar. Ellers godkender bestyrelsen den manuelt, "
     "og så kan du logge ind, når den er aktiveret."
+)
+
+#: What `PasswordResetRequestView` answers whether or not the address has an
+#: account — the same reasoning as `SIGNUP_RECEIVED`: a different response for
+#: "sent" versus "no such account" would turn the form into a way to test
+#: which emails belong to residents here.
+PASSWORD_RESET_SENT = _(
+    "Hvis der findes en bruger med den email, er der sendt et link til at nulstille adgangskoden."
 )
 
 
@@ -138,11 +153,17 @@ class SignupView(APIView):
         serializer.is_valid(raise_exception=True)
         if self._should_create(serializer.validated_data):
             try:
-                auto_approve(serializer.save())
+                signup_request = serializer.save()
             except IntegrityError:
                 # Two submissions for the same address at once. The loser
                 # created nothing, which is also what it is about to be told.
                 pass
+            else:
+                auto_approve(signup_request)
+                # Still pending means the register could not vouch for it —
+                # the one case with nobody else watching for it.
+                if signup_request.is_pending:
+                    send_signup_pending_notification(signup_request, request)
         return Response({"detail": SIGNUP_RECEIVED}, status=status.HTTP_202_ACCEPTED)
 
     def _should_create(self, data):
@@ -152,6 +173,50 @@ class SignupView(APIView):
         # differing only in capitalisation are the same person in practice, and
         # the second one could never log in anyway.
         return not User.objects.filter(email__iexact=data["email"]).exists()
+
+
+class PasswordResetRequestView(APIView):
+    """Public: "I forgot my password". Sends a link, or pretends to.
+
+    Answers `PASSWORD_RESET_SENT` whether or not the address matches an
+    account — see its docstring — so nothing here may branch on that in a way
+    that shows up in the response or its timing. The one thing this endpoint
+    does that `SignupView` does not need to is actually send mail on the
+    matching path, which is why it exists as its own view rather than folded
+    into login.
+
+    An inactive account (still awaiting board approval) does not get a link:
+    there is no password to reset into using it yet, and issuing one would
+    tell an applicant their account exists before the board has said so.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset"
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = User.objects.filter(
+            email__iexact=serializer.validated_data["email"], is_active=True
+        ).first()
+        if user is not None:
+            send_password_reset_email(user, request)
+        return Response({"detail": PASSWORD_RESET_SENT}, status=status.HTTP_202_ACCEPTED)
+
+
+class PasswordResetConfirmView(APIView):
+    """The link from the reset email lands here with a new password attached."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_reset_confirm"
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class LogoutView(APIView):

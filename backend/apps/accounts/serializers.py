@@ -1,6 +1,10 @@
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
+from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from .models import Building, Resident, SignupRequest, User
@@ -178,3 +182,68 @@ class SignupSerializer(serializers.Serializer):
             claimed_address=validated_data["address"],
             claimed_resident_number=validated_data["resident_number"],
         )
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Just the email — the view decides what, if anything, happens with it.
+
+    Whether that address has an account is not this serializer's business:
+    telling it apart from a malformed one is the only check that belongs
+    here, and even that only because DRF cannot post an unparseable address
+    anywhere useful. See `PasswordResetRequestView` for why the answer is the
+    same either way.
+    """
+
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """The link the reset email sends the resident back to, plus a new password.
+
+    `uid` and `token` together are Django's own reset-token scheme
+    (`django.contrib.auth.tokens`) rather than anything stored: the token is
+    self-verifying, so there is no `PasswordReset` row to leak, expire on a
+    schedule we maintain, or clean up. Resolving them here, in `validate()`
+    rather than a per-field validator, is deliberate — DRF runs field
+    validators before the object-level one, and `validate_password` needs the
+    *real* user for `UserAttributeSimilarityValidator` to mean anything, which
+    only exists once `uid`/`token` have been checked.
+
+    A bad uid, an unknown or inactive user, and a bad or expired token all
+    fail the same way — there is nothing to gain by telling them apart, and
+    doing so would mean confirming whether a given account exists.
+    """
+
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(style={"input_type": "password"}, trim_whitespace=False)
+
+    #: Same key `LoginView._rejected` uses for a whole-request error, so the
+    #: frontend has one place to look for "something about this request, not
+    #: a particular field" rather than two conventions to handle.
+    INVALID_LINK = _("Linket er ugyldigt eller udløbet. Bed om et nyt.")
+
+    def validate(self, attrs):
+        user = self._resolve_user(attrs["uid"], attrs["token"])
+        if user is None:
+            raise serializers.ValidationError({"detail": self.INVALID_LINK})
+        try:
+            validate_password(attrs["new_password"], user=user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"new_password": list(exc.messages)}) from exc
+        attrs["user"] = user
+        return attrs
+
+    def _resolve_user(self, uidb64, token):
+        try:
+            pk = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=pk, is_active=True)
+        except (User.DoesNotExist, ValueError, TypeError, OverflowError, UnicodeDecodeError):
+            return None
+        return user if default_token_generator.check_token(user, token) else None
+
+    def save(self):
+        user = self.validated_data["user"]
+        user.set_password(self.validated_data["new_password"])
+        user.save(update_fields=["password"])
+        return user

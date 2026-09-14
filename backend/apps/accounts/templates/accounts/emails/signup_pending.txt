@@ -1,0 +1,10 @@
+{% extends "accounts/emails/base.txt" %}
+{% block content %}Der er kommet en ny anmodning om adgang til Beboerportalen, som beboerregistret ikke selv kunne godkende. Sammenhold med registret, før du beslutter dig.
+
+Navn: {{ name }}
+Email: {{ signup_request.email }}
+Oplyst adresse: {{ signup_request.claimed_address }}
+Oplyst beboernr.: {{ signup_request.claimed_resident_number|default:"—" }}
+
+Gennemgå anmodningen her:
+{{ admin_link }}{% endblock %}

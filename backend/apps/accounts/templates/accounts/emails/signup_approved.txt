@@ -1,0 +1,4 @@
+{% extends "accounts/emails/base.txt" %}
+{% block content %}Din anmodning om adgang til Beboerportalen er godkendt af bestyrelsen. Du kan nu logge ind:
+
+{{ login_link }}{% endblock %}

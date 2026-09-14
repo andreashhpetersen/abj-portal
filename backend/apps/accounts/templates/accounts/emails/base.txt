@@ -1,0 +1,4 @@
+{% block content %}{% endblock %}
+
+--
+{% block footer %}Automatisk besked fra Beboerportalen. Svar ikke på denne email.{% endblock %}

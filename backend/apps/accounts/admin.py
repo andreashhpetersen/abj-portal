@@ -6,6 +6,7 @@ from django.urls import path, reverse
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
 
+from .emails import send_signup_approved_email
 from .forms import RegisterUploadForm
 from .models import (
     Building,
@@ -232,6 +233,11 @@ class SignupRequestAdmin(admin.ModelAdmin):
         done = 0
         for signup_request in pending:
             getattr(signup_request, decision)(by=request.user)
+            if decision == "approve":
+                # Only path that notifies the applicant: an auto-approved
+                # signup is told on the spot instead, in its own response —
+                # see `send_signup_approved_email`.
+                send_signup_approved_email(signup_request, request)
             done += 1
         skipped = queryset.count() - done
         if done:

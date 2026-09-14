@@ -126,6 +126,12 @@ DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="beboerportal@loca
 # Error mail to the admins uses this instead of DEFAULT_FROM_EMAIL.
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
+# Where a signup the register could not auto-approve gets flagged — otherwise
+# a pending SignupRequest is invisible until a board member happens to open
+# /admin/. Left blank by default, like the shop-rental settings below: a bare
+# checkout should not need a real board mailbox configured to run signup.
+SIGNUP_NOTIFICATION_EMAIL = env("SIGNUP_NOTIFICATION_EMAIL", default="")
+
 # Shop-rental applications are ingested from the public Google Form's responses
 # sheet by `manage.py sync_applications`. All three have empty defaults so a
 # checkout with no Google setup still boots and tests — the command fails with a
@@ -159,7 +165,16 @@ REST_FRAMEWORK = {
     # number of gunicorn workers (3 in deploy/Dockerfile), because there is no
     # CACHES setting and LocMemCache is per-process — enough to stop a flood,
     # not a precise quota. Configure a shared cache if that ever matters.
+    # Same reasoning for password reset: nobody legitimately requests it often,
+    # and it is the second endpoint (after signup) that an anonymous visitor
+    # can use to fish for whether an email belongs to an account here — the
+    # uniform response is what mainly guards against that, but the throttle
+    # keeps a script from just trying many addresses quickly. The confirm step
+    # gets its own scope because it is reached from an emailed link rather
+    # than typed by hand, so a much higher rate does not cost anything.
     "DEFAULT_THROTTLE_RATES": {
         "signup": "10/hour",
+        "password_reset": "10/hour",
+        "password_reset_confirm": "20/hour",
     },
 }
