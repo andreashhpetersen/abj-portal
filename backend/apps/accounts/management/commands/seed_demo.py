@@ -149,8 +149,8 @@ class Command(BaseCommand):
         ):
             Resident.objects.create(
                 user=user,
-                external_user_id=4700 + index,
-                resident_number=f"{index + 1}-2345-6789-{index}",
+                unit_number=f"1-2345-678{index}",
+                resident_number=f"1-2345-678{index}-2",
                 building=building,
                 floor=floor,
                 door=door,

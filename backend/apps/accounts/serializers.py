@@ -30,14 +30,27 @@ class BuildingSerializer(serializers.ModelSerializer):
 
 
 class ResidentSerializer(serializers.ModelSerializer):
-    """Residency as the SPA sees it. Read-only: the other database owns this."""
+    """Residency as the SPA sees it. Read-only: INNA's register owns this.
+
+    Both numbers are exposed because they answer different questions and the
+    portal has no say over either: `unit_number` is the flat, `resident_number`
+    the tenancy that a household shares. Either may be blank — the register does
+    not always have both.
+    """
 
     building = BuildingSerializer(read_only=True)
     address = serializers.CharField(read_only=True)
 
     class Meta:
         model = Resident
-        fields = ["external_user_id", "resident_number", "building", "floor", "door", "address"]
+        fields = [
+            "unit_number",
+            "resident_number",
+            "building",
+            "floor",
+            "door",
+            "address",
+        ]
         read_only_fields = fields
 
 

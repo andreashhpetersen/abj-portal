@@ -19,10 +19,18 @@ export interface Building {
   label: string
 }
 
-/** Residency details. Owned by the association's other database. */
+/** Residency details. Owned by INNA's resident register, never edited here. */
 export interface Resident {
-  external_user_id: number
-  /** Format: 1-2345-6789-0. */
+  /**
+   * The flat — `Bolignr.` in the register, format 1-1121-4203. Blank for a
+   * residency entered by hand before the register knew about it.
+   */
+  unit_number: string
+  /**
+   * The tenancy — `Beboernr.`, format 1-2345-6789-0. Shared by everyone living
+   * in the flat, so it identifies a home and not a person. Blank for a
+   * household member, who has none of their own.
+   */
   resident_number: string
   building: Building
   floor: string

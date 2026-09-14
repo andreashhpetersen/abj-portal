@@ -280,6 +280,90 @@ Compose reads `/opt/abj-portal/.env` itself, so the unit needs no
 Watch it with `journalctl -u abj-sync-applications.service -f`. A failed run
 needs no intervention — the next one re-reads the whole sheet.
 
+## The resident register
+
+`manage.py import_residents` reads an export of INNA's resident register and
+reconciles it with the database. It is what decides who may activate an account
+without waiting for the board, so it wants running whenever people move — every
+month or two, and always after somebody complains that signup would not let them
+in.
+
+Unlike the shop-rental sync there is **no timer**, because there is nothing to
+poll: INNA has no API, and until it has one a person has to fetch the file.
+
+### Getting the file
+
+Log in to INNA's web interface and export the resident list as CSV. The export
+the portal is built against has these columns, and the ones that matter are
+`Bolignr.`, `Adresse`, `Beboernr.`, `Enhedstype` and `Role hos CS`:
+
+    Fornavn, Efternavn, Alias Navn, Bolignr., Adresse, By, Postnr.,
+    Anden Adresse, E-mail, Tlf. Nr., Role hos CS, Beboernr., Enhedstype,
+    Indflytningsdato
+
+**The file is personal data about every resident** — names, private email
+addresses, phone numbers, home addresses. Keep it out of email and chat, put it
+on the server over `scp`, and delete it afterwards. `backend/data/register/` is
+gitignored precisely so a copy cannot be committed by accident; name the file
+after the day it was taken.
+
+### Running it
+
+The file is handed to a one-off container as a bind mount rather than copied
+into the image or left in a mounted directory — there is deliberately nowhere on
+the server that dumps accumulate. Dry-run first: it writes nothing and reports
+what it made of the file, which is the moment to notice that a column has been
+renamed.
+
+```bash
+scp users-2026-09-08.csv root@SERVER:/root/
+ssh root@SERVER
+chmod 644 /root/users-2026-09-08.csv   # the container runs as uid 10001
+cd /opt/abj-portal
+
+docker compose run --rm --no-deps \
+    -v /root/users-2026-09-08.csv:/tmp/register.csv:ro \
+    app python manage.py import_residents /tmp/register.csv --dry-run
+
+docker compose run --rm --no-deps \
+    -v /root/users-2026-09-08.csv:/tmp/register.csv:ro \
+    app python manage.py import_residents /tmp/register.csv
+
+shred -u /root/users-2026-09-08.csv
+```
+
+Safe to run twice; a second run over the same file reports everything unchanged.
+Locally it is simply `python manage.py import_residents
+data/register/users-2026-09-08.csv`, from `backend/` with the venv active.
+
+### Reading the output
+
+    606 nye, 0 opdaterede, 0 uændrede (606 i alt). 518 kan aktivere en konto.
+
+The second number is the one to sanity-check. If it collapses, INNA has renamed
+`Enhedstype` or its values and the import has quietly stopped recognising
+residents — which is what the warnings below the summary are there to catch:
+
+* **`Sprang linje(r) … over`** — no usable `Bolignr.`. The caretakers are listed
+  this way and belong in the admin as ordinary employee accounts.
+* **`adresse(r) kunne ikke læses som en bolig`** — expected, and almost always a
+  storage room. A *flat* in this list is somebody who cannot activate an
+  account; fix it by adding the spelling to `FLOOR_ALIASES` or `DOOR_ALIASES` in
+  `backend/apps/accounts/register.py`.
+* **`har beboernr. og en læsbar boligadresse, men tæller ikke som en bolig`** —
+  an `Enhedstype` the import recognises as neither residential nor commercial,
+  usually one INNA left blank. A handful is normal; a long list means the column
+  has changed and `RESIDENTIAL_UNIT_TYPES` needs updating.
+* **`står ikke længere i registret`** — people who have dropped out of the
+  export, typically a move-out. Nothing is deleted and no account is touched:
+  look them up in *Beboerregister* in the admin and deactivate the ones who have
+  actually left.
+* **`Nye opgange oprettet`** — a street or entrance the portal had not seen.
+  Genuine news the first time; after that, suspect a misspelt address.
+
+The run also reports any pending signup it approved because the register has
+since caught up, and any hand-made account it was able to give an address to.
+
 ## Administrative commands
 
 `manage.py` is reached through a throwaway container rather than the serving

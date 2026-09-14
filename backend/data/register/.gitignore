@@ -1,0 +1,5 @@
+# Real dumps are personal data about every resident. Only this directory's own
+# documentation is committed.
+*
+!.gitignore
+!README.md

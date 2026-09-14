@@ -3,7 +3,15 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
 
-from .models import Building, Resident, SignupRequest, SignupRequestStatus, User
+from .models import (
+    Building,
+    RegisterEntry,
+    Resident,
+    SignupRequest,
+    SignupRequestStatus,
+    User,
+)
+from .register import match_claim
 
 
 class ResidentInline(admin.StackedInline):
@@ -28,7 +36,7 @@ class UserAdmin(BaseUserAdmin):
         "first_name",
         "last_name",
         "resident__resident_number",
-        "resident__external_user_id",
+        "resident__unit_number",
     ]
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -93,6 +101,7 @@ class SignupRequestAdmin(admin.ModelAdmin):
         "applicant",
         "claimed_address",
         "claimed_resident_number",
+        "register_match",
         "status",
         "created_at",
         "reviewed_by",
@@ -106,6 +115,7 @@ class SignupRequestAdmin(admin.ModelAdmin):
         "user",
         "claimed_address",
         "claimed_resident_number",
+        "register_match",
         "status",
         "created_at",
         "status_changed_at",
@@ -119,6 +129,19 @@ class SignupRequestAdmin(admin.ModelAdmin):
                 "description": _(
                     "Oplyst af ansøgeren selv og derfor ikke bevis for noget. "
                     "Sammenhold med beboerregistret, før du godkender."
+                ),
+            },
+        ),
+        (
+            _("Beboerregistret"),
+            {
+                "fields": ("register_match",),
+                "description": _(
+                    "Slås op nu, ikke da anmodningen kom ind, så den viser det seneste "
+                    "importerede register. En anmodning, der ligger her, er en, registret "
+                    "ikke kunne genkende — ellers var kontoen aktiveret automatisk. "
+                    "Er der først kommet et match, så importér igen: så bliver den godkendt, "
+                    "uden at du skal klikke."
                 ),
             },
         ),
@@ -140,6 +163,29 @@ class SignupRequestAdmin(admin.ModelAdmin):
         if obj.user is None:
             return _("kontoen er slettet")
         return obj.user.get_full_name() or obj.user.email
+
+    @admin.display(description=_("match i registret"))
+    def register_match(self, obj):
+        """What the claimed number resolves to in the register, looked up now.
+
+        The lookup a board member would otherwise do in INNA's system, done for
+        them — and done against the current register rather than the one that
+        existed when the request arrived, which is the version that matters when
+        deciding today.
+
+        A pending request showing a match means the register has caught up since
+        the person signed up. Importing again approves it; there is no need to
+        click, and clicking is fine too.
+        """
+        match = match_claim(obj.claimed_resident_number, email=obj.email)
+        if match is None:
+            return _("Intet match — nummeret hører ikke til en andelsbolig i registret.")
+        names = ", ".join(entry.full_name for entry in match.entries if entry.full_name)
+        return _("%(address)s (bolignr. %(unit)s) — %(names)s") % {
+            "address": match.entry.address,
+            "unit": match.unit_number,
+            "names": names or _("uden navn"),
+        }
 
     @admin.action(description=_("Godkend valgte anmodninger og aktivér kontoen"))
     def approve_selected(self, request, queryset):
@@ -181,3 +227,107 @@ class SignupRequestAdmin(admin.ModelAdmin):
                 % skipped,
                 messages.WARNING,
             )
+
+
+@admin.register(RegisterEntry)
+class RegisterEntryAdmin(admin.ModelAdmin):
+    """INNA's resident register as last imported. Read-only, all of it.
+
+    Nothing here is the portal's to edit: `manage.py import_residents`
+    overwrites every column on the next run, so a correction made in this form
+    would survive until somebody imported and then vanish without trace. A wrong
+    row is fixed in INNA's own system and arrives on the next import. A residency
+    that needs correcting *now* is corrected on the user instead, where the
+    import leaves it alone.
+
+    There is no add form either, for the same reason.
+
+    The two filters worth having are `kan aktivere konto` — who the portal will
+    let in, which is the question this whole table exists to answer — and `står
+    i seneste udtræk`, which is how a board member finds the people who have
+    quietly stopped appearing.
+    """
+
+    list_display = [
+        "full_name",
+        "address_or_raw",
+        "unit_number",
+        "resident_number",
+        "unit_type",
+        "role",
+        "is_eligible",
+        "is_current",
+    ]
+    list_filter = ["is_eligible", "is_current", "unit_type", "role", "building"]
+    search_fields = [
+        "first_name",
+        "last_name",
+        "alias",
+        "email",
+        "unit_number",
+        "resident_number",
+        "raw_address",
+    ]
+    ordering = ["unit_number", "name_key"]
+    fieldsets = (
+        (
+            _("Person"),
+            {"fields": ("first_name", "last_name", "alias", "email", "phone", "role")},
+        ),
+        (
+            _("Bolig"),
+            {
+                "fields": (
+                    "unit_number",
+                    "resident_number",
+                    "unit_type",
+                    "raw_address",
+                    "building",
+                    "floor",
+                    "door",
+                    "postal_code",
+                    "city",
+                    "moved_in",
+                ),
+                "description": _(
+                    "Adressen i registret er fritekst. Opgang, etage og dør er portalens "
+                    "læsning af den — står de tomme, kunne adressen ikke læses som en bolig."
+                ),
+            },
+        ),
+        (
+            _("Import"),
+            {
+                "fields": (
+                    "is_eligible",
+                    "is_current",
+                    "name_key",
+                    "first_seen_at",
+                    "last_seen_at",
+                    "source_row",
+                )
+            },
+        ),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("building")
+
+    def get_readonly_fields(self, request, obj=None):
+        return [field.name for field in self.model._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    @admin.display(description=_("navn"), ordering="last_name")
+    def full_name(self, obj):
+        return obj.full_name or obj.alias or obj.name_key
+
+    @admin.display(description=_("adresse"), ordering="unit_number")
+    def address_or_raw(self, obj):
+        """The parsed address, falling back to whatever the register wrote.
+
+        Never blank: a storage room whose address could not be read is still
+        worth seeing in the list, and the raw text is what identifies it.
+        """
+        return obj.address or obj.raw_address

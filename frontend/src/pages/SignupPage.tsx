@@ -98,9 +98,9 @@ export function SignupPage() {
       <form className="card login__form signup" onSubmit={handleSubmit}>
         <h1>Opret bruger</h1>
         <p className="hint">
-          Siden er for beboere. Bestyrelsen godkender nye brugere manuelt, så der går lidt tid,
-          før du kan logge ind. Er du ansat eller administrator, skal du have en bruger af
-          bestyrelsen i stedet.
+          Siden er for beboere. Står du i foreningens beboerregister, er din bruger klar med
+          det samme; ellers godkender bestyrelsen den i hånden, og så går der lidt tid. Er du
+          ansat eller administrator, skal du have en bruger af bestyrelsen i stedet.
         </p>
 
         <div className="signup__row">
@@ -187,8 +187,8 @@ export function SignupPage() {
           />
         </label>
         <p className="hint">
-          Står på din huslejeopkrævning. Skriv det, som det står — bestyrelsen retter selv en
-          tastefejl.
+          Står på din huslejeopkrævning. Det er nummeret, vi genkender dig på, så tjek det en
+          ekstra gang — passer det ikke, skal bestyrelsen godkende dig i hånden i stedet.
         </p>
         {errors.resident_number && <p className="error">{errors.resident_number}</p>}
 

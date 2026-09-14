@@ -19,14 +19,23 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .models import User
+from .register import auto_approve
 from .serializers import LoginSerializer, SignupSerializer, UserSerializer
 
-#: The only thing signup ever answers. Identical whether an account was created,
-#: the email was already taken, or the submission looked automated — see
-#: `SignupView`.
+#: The only thing signup ever answers. Identical whether an account was created
+#: and activated on the spot, created and left for the board, the email was
+#: already taken, or the submission looked automated — see `SignupView`.
+#:
+#: It has to cover both outcomes without saying which one happened, and it does
+#: that by sending everybody to the login page. Telling a submitter their number
+#: matched would confirm that a given `Beboernr.` belongs to an occupied
+#: andelsbolig, which is the one thing signup has always refused to answer.
+#: Trying to log in is the safe way to find out, because the login form only
+#: names the reason to somebody who already has the password.
 SIGNUP_RECEIVED = _(
-    "Tak. Din anmodning er sendt til bestyrelsen, som godkender nye brugere manuelt. "
-    "Du kan logge ind, når din konto er aktiveret."
+    "Tak. Prøv at logge ind med det samme — står du i foreningens beboerregister, "
+    "er din konto allerede klar. Ellers godkender bestyrelsen den manuelt, "
+    "og så kan du logge ind, når den er aktiveret."
 )
 
 
@@ -86,22 +95,36 @@ class LoginView(APIView):
 
 
 class SignupView(APIView):
-    """Public signup. Creates an inactive account for the board to approve.
+    """Public signup. Checks the claim against the register, or asks the board.
 
-    Three different things happen here and all three look identical from
+    Four different things happen here and all four look identical from
     outside — same status, same body:
 
-    * A real signup creates an inactive `User` and a pending `SignupRequest`.
+    * A claim whose number resolves to one eligible flat in INNA's register
+      creates an active `User` with a `Resident` row and an approved
+      `SignupRequest`. Nobody waits: living in an andelsbolig is what entitles
+      somebody to the portal, and the register is where that fact lives, so
+      there is nothing left for a human to decide. See `register.auto_approve`
+      for what that trades away.
+    * Anything the register cannot vouch for creates an inactive `User` and a
+      pending `SignupRequest`, exactly as before — an unknown number, a mistyped
+      one, a shop, a household member of a flat the export has not caught up
+      with. The board's queue holds those, and only those.
     * An email that already has an account creates nothing. Saying so would let
       anyone test whether a given address belongs to a resident here, and there
       is no confirmation email to hide behind yet.
     * A filled honeypot creates nothing, and says nothing about why. A bot that
       learns which field gave it away is a bot that stops filling it in.
 
-    `202 Accepted` rather than `201 Created`: from the applicant's point of view
-    nothing usable has been created, and something still has to happen before it
-    is. The throttle is per-IP and deliberately tight — a resident signs up once,
-    ever, so there is no legitimate traffic to protect. There is intentionally no
+    `202 Accepted` for all of them, including the one that is now fully created:
+    a `201` on a match and a `202` otherwise would turn the form into an oracle
+    for testing resident numbers, which is precisely what the uniform answer
+    exists to prevent.
+
+    The throttle is per-IP and deliberately tight — a resident signs up once,
+    ever, so there is no legitimate traffic to protect. It matters more than it
+    used to: with the register deciding, the throttle is what stops the form
+    being used to enumerate which numbers are real. There is intentionally no
     global cap: the board announcing the portal means every resident signing up
     the same evening, and a global limit would fail exactly then.
     """
@@ -115,7 +138,7 @@ class SignupView(APIView):
         serializer.is_valid(raise_exception=True)
         if self._should_create(serializer.validated_data):
             try:
-                serializer.save()
+                auto_approve(serializer.save())
             except IntegrityError:
                 # Two submissions for the same address at once. The loser
                 # created nothing, which is also what it is about to be told.
