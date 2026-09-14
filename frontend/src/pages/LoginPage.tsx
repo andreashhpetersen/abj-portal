@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -59,6 +59,9 @@ export function LoginPage() {
         <button type="submit" disabled={submitting}>
           {submitting ? 'Logger ind…' : 'Log ind'}
         </button>
+        <p className="hint">
+          Bor du her og mangler en bruger? <Link to="/signup">Opret dig</Link>
+        </p>
       </form>
     </div>
   )

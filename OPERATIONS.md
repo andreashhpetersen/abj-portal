@@ -280,6 +280,118 @@ Compose reads `/opt/abj-portal/.env` itself, so the unit needs no
 Watch it with `journalctl -u abj-sync-applications.service -f`. A failed run
 needs no intervention — the next one re-reads the whole sheet.
 
+## The resident register
+
+`RegisterEntry` is a copy of INNA's resident register, and it is what decides
+who may activate an account without waiting for the board. It wants refreshing
+whenever people move — every month or two, and always after somebody complains
+that signup would not let them in.
+
+Unlike the shop-rental sync there is **no timer**, because there is nothing to
+poll: INNA has no API, and until it has one a person has to fetch the file.
+
+### Where the file goes on the server
+
+**Nowhere.** It is uploaded through the admin, read straight out of the request,
+and gone when the request ends; what survives is the `RegisterEntry` rows. There
+is deliberately no upload directory, no copy kept for reference, and nothing to
+remember to delete — a dump is the name, private email address, phone number and
+home address of all six hundred people in the association, and the safest place
+to put that is nowhere.
+
+`backend/data/register/` exists for *local development only*. It is gitignored
+and dockerignored, so nothing from it reaches a commit or a published image.
+
+### Importing it
+
+1. Log in to INNA's web interface and export the resident list as CSV.
+2. In the portal's admin, go to **Beboerregister → Importér beboerregister**.
+3. Leave **Kun prøvekørsel** ticked and upload the file. Nothing is written;
+   read the report.
+4. Untick it, choose the file again, and upload. The report appears on the
+   register's list page.
+
+Step 3 cannot be confirmed with a second click, because there would be nothing
+left to confirm against — the file is not kept. Choosing it twice is the price
+of not storing it, and this happens a handful of times a year.
+
+Safe to repeat: the same file twice reports everything unchanged.
+
+The export the portal is built against has these columns, of which `Bolignr.`,
+`Adresse`, `Beboernr.`, `Enhedstype` and `Role hos CS` are the ones that matter:
+
+    Fornavn, Efternavn, Alias Navn, Bolignr., Adresse, By, Postnr.,
+    Anden Adresse, E-mail, Tlf. Nr., Role hos CS, Beboernr., Enhedstype,
+    Indflytningsdato
+
+It does not matter whether the file is comma- or semicolon-separated, nor
+whether it is UTF-8 or a Windows encoding: the portal tries the combinations and
+uses whichever one makes those columns appear. So a file that has been opened
+and re-saved in Excel still imports.
+
+### Who may do it
+
+The page is gated on a permission of its own, **`accounts | beboerregisterrække
+| Kan importere beboerregistret fra en fil`**, not on the ordinary change
+permission — every column in the register is read-only in the admin, and what
+this grants is the right to replace the whole thing from a file, and with it who
+the portal lets in. Grant it to the board members who actually fetch the export;
+superusers have it already.
+
+### Reading the report
+
+    606 nye, 0 opdaterede, 0 uændrede (606 i alt). 518 kan aktivere en konto.
+
+The second number is the one to sanity-check. If it collapses, INNA has renamed
+`Enhedstype` or its values and the import has quietly stopped recognising
+residents — which is what the warnings underneath are there to catch:
+
+* **`Sprang linje(r) … over`** — no usable `Bolignr.`. The caretakers are listed
+  this way and belong in the admin as ordinary employee accounts.
+* **`adresse(r) kunne ikke læses som en bolig`** — expected, and almost always a
+  storage room. A *flat* in this list is somebody who cannot activate an
+  account; fix it by adding the spelling to `FLOOR_ALIASES` or `DOOR_ALIASES` in
+  `backend/apps/accounts/register.py`.
+* **`har beboernr. og en læsbar boligadresse, men tæller ikke som en bolig`** —
+  an `Enhedstype` the import recognises as neither residential nor commercial,
+  usually one INNA left blank. A handful is normal; a long list means the column
+  has changed and `RESIDENTIAL_UNIT_TYPES` needs updating.
+* **`står ikke længere i registret`** — people who have dropped out of the
+  export, typically a move-out. Nothing is deleted and no account is touched:
+  look them up in *Beboerregister* and deactivate the ones who have actually
+  left.
+* **`Nye opgange oprettet`** — a street or entrance the portal had not seen.
+  Genuine news the first time; after that, suspect a misspelt address.
+
+The run also reports any pending signup it approved because the register has
+since caught up, and any hand-made account it was able to give an address to.
+
+### From a shell instead
+
+The same import, for anyone who has the file on a machine with a terminal —
+locally, or on the server when the admin is not an option. It reports exactly
+the same things, because both routes share the code that produces them.
+
+```bash
+# Locally, from backend/ with the venv active:
+python manage.py import_residents data/register/users-2026-09-08.csv --dry-run
+python manage.py import_residents data/register/users-2026-09-08.csv
+```
+
+On the server the file is handed to a one-off container as a bind mount, so it
+never enters the image and nothing persists:
+
+```bash
+scp users-2026-09-08.csv root@SERVER:/root/
+ssh root@SERVER
+chmod 644 /root/users-2026-09-08.csv   # the container runs as uid 10001
+cd /opt/abj-portal
+docker compose run --rm --no-deps \
+    -v /root/users-2026-09-08.csv:/tmp/register.csv:ro \
+    app python manage.py import_residents /tmp/register.csv
+shred -u /root/users-2026-09-08.csv
+```
+
 ## Administrative commands
 
 `manage.py` is reached through a throwaway container rather than the serving

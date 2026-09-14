@@ -29,6 +29,7 @@ pytest                              # whole suite
 pytest apps/accounts/tests/test_auth.py::test_me_requires_authentication   # single test
 ruff check . && ruff format .
 python manage.py makemigrations && python manage.py migrate
+python manage.py import_residents data/register/users-YYYY-MM-DD.csv --dry-run
 ```
 
 Frontend (from `frontend/`, Node 24 active):
@@ -85,13 +86,139 @@ query the group name inline.
 **Not every user is a resident.** Employees and third-party managers get a
 `User` with no `Resident` row, so never assume an address or resident number
 exists — check `user.is_resident` (or the nullable `resident` key in the API).
-Residency lives in `Resident`: `external_user_id` (the person's id in the
-association's other database, which is the source of truth), `resident_number`
-formatted `1-2345-6789-0` and regex-validated, plus the flat. The address is
-structured, not free text: `Building` holds street and house number — the
-association spans several blocks on more than one street — and `Resident` adds
-floor and door. Use `resident.address` for display rather than reassembling it,
-and `select_related("resident__building")` when listing users.
+The address is structured, not free text: `Building` holds street and house
+number — the association spans several blocks on more than one street — and
+`Resident` adds floor and door. Use `resident.address` for display rather than
+reassembling it, and `select_related("resident__building")` when listing users.
+
+**`Resident` carries two numbers and neither is unique.** `unit_number`
+(`Bolignr.`) is the flat; `resident_number` (`Beboernr.`) is the tenancy, which
+everyone living in the flat shares — so a couple is two logins against one
+number, and a unique constraint on either would lock the second person out.
+`unit_number` is the link back to the register, because the unit outlives the
+tenancy. Both are `blank=True`: a household member has no tenancy number at all.
+The format validators are deliberately loose (`\d-\d{3,5}-\d{3,5}`), since the
+real register contains `1-1121-409-2` and `1-1121-5007-10` beside the usual
+shape. There is no id-of-this-person-elsewhere column, because the register has
+none to give.
+
+**The resident register is imported, not synced.** An export from INNA (the
+administration company, Cobblestone under its old name — hence `Role hos CS`) is
+reconciled into `RegisterEntry`. INNA has no API, so somebody fetches the file by
+hand and there is no timer.
+
+**The board uploads it in the admin; the management command is the same import
+for anyone with a shell.** The people who can get the export out of INNA are not
+the people with SSH, so *Beboerregister → Importér beboerregister* is the real
+route and `manage.py import_residents <file.csv>` is the fallback. Both go
+through `register.run_import`, and both render `register.*_notes`, so they say
+the same thing about the same file — put new diagnostics there, not in either
+caller. The upload is gated on its own `import_register` permission rather than
+`change_registerentry`: every column here is read-only, and what it grants is
+replacing the register wholesale, and with it who the portal admits.
+
+**The export is never stored.** An upload is read out of the request and dropped;
+`csvsource.MAX_BYTES` keeps it under `FILE_UPLOAD_MAX_MEMORY_SIZE` so it does not
+even spill to a temporary file. That is why a dry run cannot be confirmed with a
+second click — there would be nothing left to confirm against — and the cost, one
+extra file-picker, is the right trade for not having six hundred residents'
+details sitting on a disk. `backend/data/register/` is for local development
+only, gitignored *and* dockerignored; the only register data in the repo is the
+invented `apps/accounts/tests/data/register_sample.csv`.
+
+**Three modules, one seam each.** `csvsource.py` is the only code that knows the
+register arrives as a CSV — the counterpart of `shoprentals/sheets.py`, and what
+changes the day INNA offers an API. It detects the encoding and separator rather
+than asking, by trying combinations until the required columns appear, because a
+file re-saved in Excel on a Danish machine is cp1252 with semicolons and the
+person uploading should not have to know that. `register.py` takes a header and
+rows from anywhere, which is what makes all of it testable without a real dump.
+`forms.py` turns a bad file into a field error next to the input.
+
+**A `RegisterEntry` is not an account, and the import creates none.** Most of
+the register has never opened the portal and thirty flats have no email address
+in it at all. What the import produces is the list a signup is checked against.
+Identity is `(unit_number, name_key)` — the export has no id for a person, and
+a line number would re-point every row below it the moment somebody sorted the
+file. Nothing is deleted: a row that stops appearing goes `is_current=False`,
+because the account may own bookings by then and a disappearance is a question
+rather than an answer.
+
+**Eligibility is stored, not recomputed, and it needs the whole export.** The
+rule is "an andelsbolig and a `Beboernr.`", which covers andelshavere,
+subletters and board members. Household members are the exception that stops it
+being a one-liner: the export gives them neither column, so they qualify on
+whether their `Bolignr.` is a unit some *other* row shows to be residential —
+which is why `mark_eligibility` runs over all the rows at once, and why the
+shopkeeper's partner at `Jægersborggade 57, kld. th.` correctly stays out. An
+address that cannot be parsed is never eligible, whatever else the row says.
+`Enhedstype` `Bolig` counts as `Andelsbolig` (three flats are typed that way),
+and `Indflytningsdato` deliberately decides nothing — the export contains
+move-ins months ahead, and somebody taking over a flat in December has every
+reason to book the beboerlokale in November.
+
+**Signup is a claim; the register clears it when it can, otherwise a human
+does.** `/api/auth/signup/` is the only endpoint an anonymous visitor can write
+through. `register.auto_approve` resolves the claimed number — against both
+`Beboernr.` and `Bolignr.`, since a household member only has the latter — and
+if it lands on exactly one eligible unit the account is activated with a
+`Resident` row attached, on the spot. Anything else creates the `User` with
+`is_active=False` plus a pending `SignupRequest` for a board member to approve
+in the admin, which is what let the portal offer signup before the register
+existed at all.
+
+What that trades away is worth stating plainly: the claimed email is **not**
+part of the test — it cannot be, since thirty eligible flats have no email in
+the register — so the proof is only that the claimant has seen a rent statement
+for a flat here. The per-IP `signup` throttle is therefore load-bearing in a way
+it was not before: it is what stops the form being used to enumerate which
+numbers are real. Ambiguity is always a refusal, never a guess.
+
+**Signup answers the same 202 however it went**, including when it activated the
+account. A `201` on a match and a `202` otherwise would turn the form into an
+oracle for testing resident numbers, which is exactly what the uniform answer
+exists to prevent — so the receipt sends everyone to the login page instead, and
+`LoginView._rejected` names the real reason only to somebody who already has the
+password.
+
+The claim is **free text on `SignupRequest`, never written to a `Resident` row**:
+what the applicant typed is the thing being checked, and storing it as residency
+would destroy the only record of it. A residency comes from the register or from
+a board member, never from the form. The claimed number is deliberately not
+format-validated either — the register either recognises it or a board member
+reads it, and rejecting a mistyped digit teaches the applicant nothing.
+
+**The signup page is for residents, so the resident number is required**
+(`phone` is the only optional field). Someone with no number to give is an
+employee or a third-party manager, and the board creates those accounts in the
+admin — the only place that can grant more than a login anyway. Required but
+unvalidated is the deliberate combination: without a number the board has only
+an address, which can match a flat with two names on the door. The column stays
+`blank=True` so a request the board enters by hand is still valid.
+
+A field error is the one answer signup gives other than the uniform 202, and it
+is safe to: it describes what the submitter typed, not who already has an
+account here. The frontend states the password rules up front rather than
+letting `AUTH_PASSWORD_VALIDATORS` reject four times in a row — `SignupPage`
+restates that setting and has to be kept in step with it.
+
+`reject()` deletes the provisional account and keeps the request as a record,
+because `User.email` is unique: a pending request otherwise holds an address
+hostage, and someone signing up as a resident who has not got around to it yet
+would lock out the real one. Withdrawing an *approved* account is
+`is_active = False`, not `reject()` — by then it may own bookings a cascade would
+take with it.
+
+The `website` honeypot and the per-IP `signup` throttle scope are the whole bot
+defence. That used to be enough because an unapproved account could do nothing;
+now that a matched claim activates itself, the throttle is also what keeps the
+form from being used to enumerate resident numbers, so treat loosening it as a
+security change. Note its effective limit is the configured rate times the
+gunicorn worker count, since there is no shared `CACHES`. A CAPTCHA is not an
+easy option here —
+reCAPTCHA is Google's and Turnstile is Cloudflare's, both against the ownership
+criterion in `INFRASTRUCTURE.md`; Friendly Captcha is the compliant escalation if
+one is ever needed.
 
 **Booking rules live on the model, not in views.** `Event.save()` calls
 `full_clean()` deliberately: DRF's `ModelSerializer` does not, so without it the
@@ -274,12 +401,20 @@ happen quarterly for any of it to mean anything.
 
 Deliberately unresolved — don't quietly pick one while doing something else.
 
-- **How residents get into the system.** A sync command against the
-  association's other database, a one-off import, or manual admin entry. This
-  decides whether `Resident.external_user_id` and `resident_number` should be
-  read-only in the admin, whether a `synced_at` field is needed, and what
-  happens when someone moves out. Until it is settled, residency is edited by
-  hand in the admin and `external_user_id` is required.
+- **What a move-out should do.** Settled: `import_residents` flags the register
+  row `is_current=False` and stops it admitting anyone, and leaves the `User`
+  and `Resident` alone — a cascade would take the person's bookings with it.
+  What is *not* settled is who deactivates the account and when. Today nobody
+  does, so a resident who has moved keeps a working login until a board member
+  notices the warning in the import's output. Deciding it means deciding whether
+  a departed resident should lose access at all (they may still owe a cleaning
+  fee on a booking) and after how long.
+
+- **Whether erhverv tenants should get in.** The shops are in the register with
+  `Enhedstype` `Erhverv` and are deliberately ineligible; the board's rule is
+  that living here is what entitles someone to the beboerlokale. Ask before
+  widening it — `RESIDENTIAL_UNIT_TYPES` is a one-line change and the
+  consequences are not.
 
 - **What the lawyer actually needs to draft a lease.** `ApplicationDetails` has a
   plausible field set and a `REQUIRED_FOR_CONTRACT` list, both guessed rather

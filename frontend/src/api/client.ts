@@ -70,3 +70,21 @@ export const api = {
   /** Primes the csrftoken cookie. Call once before the first unsafe request. */
   ensureCsrf: () => request<{ detail: string }>('/auth/csrf/', { method: 'GET' }),
 }
+
+/**
+ * DRF's field-level errors, flattened to one string per field.
+ *
+ * A 400 body is `{ field: ["besked", ...] }`; anything else (401, 429, a
+ * network failure) is not about a particular field, so it yields nothing and
+ * the caller falls back to its own message.
+ */
+export function fieldErrors(error: unknown): Record<string, string> {
+  if (!(error instanceof ApiError) || error.status !== 400 || typeof error.data !== 'object') {
+    return {}
+  }
+  const flattened: Record<string, string> = {}
+  for (const [field, messages] of Object.entries(error.data as Record<string, unknown>)) {
+    flattened[field] = Array.isArray(messages) ? messages.join(' ') : String(messages)
+  }
+  return flattened
+}

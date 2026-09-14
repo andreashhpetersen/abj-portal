@@ -7,6 +7,11 @@
 frontend/dist/
 backend/staticfiles/
 backend/media/
+# Resident-register downloads. Gitignored too, but the build context is the
+# repository root, so an uncommitted dump sitting in a working copy would
+# otherwise be baked into a published image — six hundred people's names,
+# emails and home addresses. The import is handed its file at run time.
+backend/data/
 **/__pycache__/
 **/*.py[cod]
 **/.pytest_cache/

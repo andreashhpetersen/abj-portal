@@ -144,6 +144,64 @@ button:disabled {
   }
 }
 
+/* --- signup -------------------------------------------------------------- */
+
+/* Reuses the login card, but the fields carry their own labels, and there are
+   enough of them that the pairs need a little more room than a phone gives. */
+.signup {
+  width: min(30rem, 100%);
+  gap: 0.75rem;
+}
+
+.signup label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.signup__row {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 30rem) {
+  .signup__row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.signup__optional {
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* A hint belongs to the field above it, so it sits closer to that than to the
+   next one. */
+.signup .hint {
+  margin-top: -0.35rem;
+}
+
+/* The password rules, stated before the server gets a chance to. A list and
+   not a sentence: the four conditions are read once each here, and re-read one
+   at a time when one of them is what failed. */
+.signup__rules {
+  margin: -0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+/* The honeypot. Off-screen rather than `display: none`, because a bot that
+   skips hidden fields is a bot this would not catch. Nothing here is reachable
+   by tab, pointer or screen reader. */
+.honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
 /* --- calendar ------------------------------------------------------------ */
 
 .calendar-page {

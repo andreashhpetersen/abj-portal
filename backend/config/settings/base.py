@@ -152,4 +152,14 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
+    # Signup is the only endpoint an unauthenticated visitor can write through,
+    # so it is the only one that needs a rate. Per IP, and tight on purpose: a
+    # resident signs up once in their life, and a whole household sharing one
+    # router is still only a handful. Note the effective limit is this times the
+    # number of gunicorn workers (3 in deploy/Dockerfile), because there is no
+    # CACHES setting and LocMemCache is per-process — enough to stop a flood,
+    # not a precise quota. Configure a shared cache if that ever matters.
+    "DEFAULT_THROTTLE_RATES": {
+        "signup": "10/hour",
+    },
 }
