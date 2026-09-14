@@ -18,13 +18,20 @@ from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.utils.translation import gettext as _
 
 
-def _send(*, subject, template, context, to):
+def _send(*, subject, template, context, to, request):
+    """Render and send one message. `request` is only ever used for
+    `build_absolute_uri` — here, for the logo, and in each caller for its own
+    link — so every email resolves against whichever host it was actually
+    triggered from, same as the SPA does.
+    """
+    context = {**context, "logo_url": request.build_absolute_uri(static("accounts/logo.png"))}
     text_body = render_to_string(f"accounts/emails/{template}.txt", context)
     html_body = render_to_string(f"accounts/emails/{template}.html", context)
     message = EmailMultiAlternatives(subject=subject, body=text_body, to=[to])
@@ -58,6 +65,7 @@ def send_password_reset_email(user, request):
         template="password_reset",
         context={"link": link},
         to=user.email,
+        request=request,
     )
 
 
@@ -89,6 +97,7 @@ def send_signup_pending_notification(signup_request, request):
             "admin_link": admin_link,
         },
         to=settings.SIGNUP_NOTIFICATION_EMAIL,
+        request=request,
     )
 
 
@@ -107,4 +116,5 @@ def send_signup_approved_email(signup_request, request):
         template="signup_approved",
         context={"login_link": login_link},
         to=signup_request.email,
+        request=request,
     )

@@ -4,11 +4,13 @@ inlined, because that is what actually renders consistently across mail
 clients — desktop Outlook uses Word's rendering engine, which ignores flex,
 grid and most of CSS3, but has always understood a table.
 
-The colours match the SPA's own palette (`frontend/src/styles.css`:
---color-accent #2f5d50, --color-bg #f6f5f2), so the two feel like one product
-ahead of any deliberate visual redesign. `header` renders the wordmark as
-text; swap in an `<img>` once a logo file exists, in this block only —
-everything extending this template inherits the change for free.
+The accent colour matches the SPA's own palette (`frontend/src/styles.css`:
+--color-accent #2f5d50), so the two feel like one product ahead of a wider,
+deliberate visual redesign. The header is white because the logo PNG is
+transparent outside its circle — composited onto the green banner this
+template used before a logo existed, the black linework read fine but every
+redesign of that banner's colour would need checking against it again;
+white avoids coupling the two.
 {% endcomment %}<!DOCTYPE html>
 <html lang="da">
 <head>
@@ -22,8 +24,8 @@ everything extending this template inherits the change for free.
 <td align="center" style="padding:32px 16px;">
 <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:480px;max-width:100%;background-color:#ffffff;border-radius:10px;">
 <tr>
-<td style="background-color:#2f5d50;padding:20px 28px;border-radius:10px 10px 0 0;">
-{% block header %}<span style="color:#ffffff;font-size:18px;font-weight:700;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:0.02em;">Beboerportalen</span>{% endblock %}
+<td style="background-color:#ffffff;padding:24px 28px;border-bottom:1px solid #e2e0da;border-radius:10px 10px 0 0;">
+{% block header %}<img src="{{ logo_url }}" alt="A/B Jæger" height="56" style="display:block;height:56px;width:auto;border:0;">{% endblock %}
 </td>
 </tr>
 <tr>
