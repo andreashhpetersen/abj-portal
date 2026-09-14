@@ -1,0 +1,44 @@
+{% comment %}
+Shared shell for every HTML email. Table-based layout with every style
+inlined, because that is what actually renders consistently across mail
+clients — desktop Outlook uses Word's rendering engine, which ignores flex,
+grid and most of CSS3, but has always understood a table.
+
+The colours match the SPA's own palette (`frontend/src/styles.css`:
+--color-accent #2f5d50, --color-bg #f6f5f2), so the two feel like one product
+ahead of any deliberate visual redesign. `header` renders the wordmark as
+text; swap in an `<img>` once a logo file exists, in this block only —
+everything extending this template inherits the change for free.
+{% endcomment %}<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block subject %}Beboerportalen{% endblock %}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f6f5f2;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f6f5f2;">
+<tr>
+<td align="center" style="padding:32px 16px;">
+<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="width:480px;max-width:100%;background-color:#ffffff;border-radius:10px;">
+<tr>
+<td style="background-color:#2f5d50;padding:20px 28px;border-radius:10px 10px 0 0;">
+{% block header %}<span style="color:#ffffff;font-size:18px;font-weight:700;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;letter-spacing:0.02em;">Beboerportalen</span>{% endblock %}
+</td>
+</tr>
+<tr>
+<td style="padding:28px;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.5;color:#1c1c1a;">
+{% block content %}{% endblock %}
+</td>
+</tr>
+<tr>
+<td style="padding:16px 28px 24px;border-top:1px solid #e2e0da;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+<span style="color:#5f5f58;font-size:12px;">{% block footer %}Automatisk besked fra Beboerportalen. Svar ikke på denne email.{% endblock %}</span>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>

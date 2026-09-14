@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .emails import send_password_reset_email
+from .emails import send_password_reset_email, send_signup_pending_notification
 from .models import User
 from .register import auto_approve
 from .serializers import (
@@ -50,8 +50,7 @@ SIGNUP_RECEIVED = _(
 #: "sent" versus "no such account" would turn the form into a way to test
 #: which emails belong to residents here.
 PASSWORD_RESET_SENT = _(
-    "Hvis der findes en bruger med den email, er der sendt et link til at "
-    "nulstille adgangskoden."
+    "Hvis der findes en bruger med den email, er der sendt et link til at nulstille adgangskoden."
 )
 
 
@@ -154,11 +153,17 @@ class SignupView(APIView):
         serializer.is_valid(raise_exception=True)
         if self._should_create(serializer.validated_data):
             try:
-                auto_approve(serializer.save())
+                signup_request = serializer.save()
             except IntegrityError:
                 # Two submissions for the same address at once. The loser
                 # created nothing, which is also what it is about to be told.
                 pass
+            else:
+                auto_approve(signup_request)
+                # Still pending means the register could not vouch for it —
+                # the one case with nobody else watching for it.
+                if signup_request.is_pending:
+                    send_signup_pending_notification(signup_request, request)
         return Response({"detail": SIGNUP_RECEIVED}, status=status.HTTP_202_ACCEPTED)
 
     def _should_create(self, data):

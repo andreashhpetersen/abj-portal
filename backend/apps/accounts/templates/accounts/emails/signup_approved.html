@@ -1,0 +1,10 @@
+{% extends "accounts/emails/base.html" %}
+{% block subject %}Din bruger er godkendt{% endblock %}
+{% block content %}
+<p style="margin:0 0 20px;">
+  Din anmodning om adgang til Beboerportalen er godkendt af bestyrelsen. Du kan nu logge ind.
+</p>
+<p style="margin:0;">
+  <a href="{{ login_link }}" style="display:inline-block;background-color:#2f5d50;color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:6px;font-weight:600;">Log ind</a>
+</p>
+{% endblock %}

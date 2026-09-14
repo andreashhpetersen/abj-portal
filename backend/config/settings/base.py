@@ -126,6 +126,12 @@ DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="beboerportal@loca
 # Error mail to the admins uses this instead of DEFAULT_FROM_EMAIL.
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
+# Where a signup the register could not auto-approve gets flagged — otherwise
+# a pending SignupRequest is invisible until a board member happens to open
+# /admin/. Left blank by default, like the shop-rental settings below: a bare
+# checkout should not need a real board mailbox configured to run signup.
+SIGNUP_NOTIFICATION_EMAIL = env("SIGNUP_NOTIFICATION_EMAIL", default="")
+
 # Shop-rental applications are ingested from the public Google Form's responses
 # sheet by `manage.py sync_applications`. All three have empty defaults so a
 # checkout with no Google setup still boots and tests — the command fails with a
