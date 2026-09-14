@@ -41,9 +41,9 @@ const THROTTLED =
 export function SignupPage() {
   const { member, loading } = useAuth()
   const [values, setValues] = useState<SignupPayload>(EMPTY)
-  // Client-side only: the server does not ask for it. Worth having anyway,
-  // since there is no password reset yet — a typo here means the board
-  // approves an account its owner cannot get into.
+  // Client-side only: the server does not ask for it. Worth having anyway —
+  // a typo here still means a trip through /forgot-password before the
+  // account is usable, which is friction the field avoids for free.
   const [repeated, setRepeated] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [receipt, setReceipt] = useState<string | null>(null)

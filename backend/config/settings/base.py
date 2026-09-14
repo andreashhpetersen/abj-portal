@@ -159,7 +159,16 @@ REST_FRAMEWORK = {
     # number of gunicorn workers (3 in deploy/Dockerfile), because there is no
     # CACHES setting and LocMemCache is per-process — enough to stop a flood,
     # not a precise quota. Configure a shared cache if that ever matters.
+    # Same reasoning for password reset: nobody legitimately requests it often,
+    # and it is the second endpoint (after signup) that an anonymous visitor
+    # can use to fish for whether an email belongs to an account here — the
+    # uniform response is what mainly guards against that, but the throttle
+    # keeps a script from just trying many addresses quickly. The confirm step
+    # gets its own scope because it is reached from an emailed link rather
+    # than typed by hand, so a much higher rate does not cost anything.
     "DEFAULT_THROTTLE_RATES": {
         "signup": "10/hour",
+        "password_reset": "10/hour",
+        "password_reset_confirm": "20/hour",
     },
 }

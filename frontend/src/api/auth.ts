@@ -33,6 +33,11 @@ export interface SignupReceipt {
   detail: string
 }
 
+/** What the server answers a reset request with, whatever it actually did. */
+export interface PasswordResetReceipt {
+  detail: string
+}
+
 export const auth = {
   /**
    * Always resolves to the same receipt — created, email already known, or
@@ -44,5 +49,25 @@ export const auth = {
     // be the first request of the visit, so the CSRF cookie may not exist yet.
     await api.ensureCsrf()
     return api.post<SignupReceipt>('/auth/signup/', payload)
+  },
+
+  /**
+   * Always resolves to the same receipt whether or not the email has an
+   * account — same reasoning as `signup`. Does not touch the current
+   * session, which is why this lives here rather than in `AuthContext`.
+   */
+  requestPasswordReset: async (email: string): Promise<PasswordResetReceipt> => {
+    await api.ensureCsrf()
+    return api.post<PasswordResetReceipt>('/auth/password-reset/', { email })
+  },
+
+  /** `uid` and `token` come from the link the reset email sent. */
+  confirmPasswordReset: async (uid: string, token: string, newPassword: string): Promise<void> => {
+    await api.ensureCsrf()
+    await api.post<void>('/auth/password-reset/confirm/', {
+      uid,
+      token,
+      new_password: newPassword,
+    })
   },
 }
