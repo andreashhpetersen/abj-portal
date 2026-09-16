@@ -4,7 +4,8 @@ import type { BookingPolicy, EventCategory, Frequency } from '../api/bookings'
 import { bookings } from '../api/bookings'
 import { fieldErrors } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { TIME_SLOTS, WEEKDAY_NAMES, combineLocal, daysFromToday, weekdayOf } from '../lib/dates'
+import { TIME_SLOTS, combineLocal } from '../lib/dates'
+import { privateBookingProblem } from '../lib/policy'
 
 import type { FormEvent } from 'react'
 
@@ -18,35 +19,6 @@ const FREQUENCY_LABELS: Record<Frequency, string> = {
   daily: 'Hver dag',
   weekly: 'Hver uge',
   monthly: 'Hver måned',
-}
-
-/**
- * Why this day cannot take a private booking, or null if it can.
- *
- * This mirrors the server's rules so the form can say why up front instead of
- * waiting for a rejected submit. The server remains the authority.
- */
-function privateBookingProblem(
-  day: string,
-  policy: BookingPolicy | null,
-  exempt: boolean,
-): string | null {
-  if (policy === null || exempt) return null
-
-  const daysAhead = daysFromToday(day)
-  if (daysAhead < policy.private_booking_min_notice_days) {
-    return `Private bookinger skal laves mindst ${policy.private_booking_min_notice_days} dage frem.`
-  }
-  if (daysAhead > policy.private_booking_max_horizon_days) {
-    return `Private bookinger kan laves højst ${policy.private_booking_max_horizon_days} dage frem.`
-  }
-  if (!policy.private_booking_weekdays.includes(weekdayOf(day))) {
-    const open = policy.private_booking_weekdays
-      .map((weekday) => WEEKDAY_NAMES[weekday])
-      .join(', ')
-    return `Lokalet kan kun bookes privat på: ${open}.`
-  }
-  return null
 }
 
 export function BookingForm({ day, policy, onCreated }: Props) {

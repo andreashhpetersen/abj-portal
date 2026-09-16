@@ -1,11 +1,14 @@
 import { useState } from 'react'
 
-import type { BookingEvent } from '../api/bookings'
+import type { BookingEvent, BookingPolicy } from '../api/bookings'
 import { bookings } from '../api/bookings'
 import { formatTimeRange } from '../lib/dates'
 
+import { EventEditForm } from './EventEditForm'
+
 interface Props {
   event: BookingEvent
+  policy: BookingPolicy | null
   onChanged: () => Promise<void> | void
 }
 
@@ -13,8 +16,9 @@ interface Props {
  * One booking. Private ones deliberately show no title — only when the room is
  * taken and who to ask about it, which is what the calendar is for.
  */
-export function EventCard({ event, onChanged }: Props) {
+export function EventCard({ event, policy, onChanged }: Props) {
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const isPublic = event.category === 'public'
 
@@ -29,6 +33,23 @@ export function EventCard({ event, onChanged }: Props) {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (editing) {
+    return (
+      <article className={`event event--${event.category}`}>
+        <h3 className="event__title">{isPublic ? event.title : 'Privat booking'}</h3>
+        <EventEditForm
+          event={event}
+          policy={policy}
+          onSaved={async () => {
+            await onChanged()
+            setEditing(false)
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      </article>
+    )
   }
 
   return (
@@ -75,6 +96,16 @@ export function EventCard({ event, onChanged }: Props) {
             }
           >
             {event.is_attending ? 'Meld fra' : 'Jeg deltager'}
+          </button>
+        )}
+        {event.can_edit && (
+          <button
+            type="button"
+            className="button--quiet"
+            disabled={busy}
+            onClick={() => setEditing(true)}
+          >
+            Rediger
           </button>
         )}
         {event.can_cancel && (

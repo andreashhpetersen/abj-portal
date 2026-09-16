@@ -238,17 +238,74 @@ timestamp, so a booking exactly 14 days out is valid at any hour. The weekday is
 judged on the day the booking *starts*, so a Saturday party running to 02:00
 counts as Saturday.
 
-These rules apply **only when creating** (`self._state.adding`). Applying them
-on every save would mean that closing private bookings left existing ones
-impossible to cancel. Admins bypass all of them.
+These rules apply when the booking is **placed** — created, moved to another
+day, or turned from public into private. `Event._is_being_placed` is where that
+is decided, and `Event.from_db` is what remembers the before-state it compares
+against. They deliberately do *not* apply to the rest of an edit: retiming
+within the booked day, correcting the finishing time, or cancelling. Both
+halves of that are load-bearing. Testing them on every save would leave an
+existing booking uncancellable once private bookings closed, and uneditable the
+moment it came within its own notice period. Testing them only on create would
+make the edit route a way round the notice period — book fourteen days out, then
+move it to tomorrow. Admins bypass all of them.
+
+**Editing belongs to whoever booked**, and a cancelled booking cannot be edited
+at all: `_clashing_events()` ignores cancelled events, so an edit would not
+reclaim the slot and must not look as though it had. `EventSerializer` refuses
+it, and `can_edit` tells the UI the same thing.
+
+**An occurrence of a series edits as an ordinary booking.** One week the
+strikkecafé moves or is cancelled and the rest of the term is unaffected, which
+is why occurrences are materialised in the first place. `EventEditForm` offers
+the series-wide alternative alongside it and defaults to this one, because it is
+the choice that cannot surprise anybody. A change of *date* is always
+single-occurrence: moving the whole series to another weekday is a change of
+rhythm, which is the thing series editing does not do.
 
 **Recurrence is materialised, not computed.** `EventSeries.create_occurrences()`
 writes real `Event` rows, so the calendar stays a date-range query and a single
-occurrence can be cancelled without special-casing the pattern. The arithmetic
-in `occurrence_times()` runs on local wall-clock time and re-localises, so a
-19:00 event stays at 19:00 across a DST change — don't "simplify" it to adding
-`timedelta` to an aware datetime. Series expansion is capped at
-`MAX_OCCURRENCES`.
+occurrence can be cancelled or moved without special-casing the pattern. The
+arithmetic in `occurrence_times()` runs on local wall-clock time and
+re-localises, so a 19:00 event stays at 19:00 across a DST change — don't
+"simplify" it to adding `timedelta` to an aware datetime, and use
+`shift_wall_clock()` for the same reason when moving one. Series expansion is
+capped at `MAX_OCCURRENCES`.
+
+**`seed_start`/`seed_end` are the pattern's origin, not a copy of the first
+occurrence.** Occurrences can be moved one at a time, so they cannot be trusted
+to say where the pattern began — without the columns, extending a series would
+re-materialise it from wherever somebody happened to drag the first evening.
+They are nullable only because series created before them exist; `pattern_seed()`
+falls back to the earliest occurrence for those.
+
+**A series can be renamed, retimed and made to run longer or stop sooner — but
+never re-rhythmed.** `EventSeriesUpdateSerializer` leaves `frequency` and
+`interval` read-only, because changing them means deleting future occurrences
+and recreating them, and `EventAttendance.event` is `CASCADE` — everyone who had
+signed up would go with them. That is a decision for the board, not a default,
+so delete-and-recreate is still the way. What the four operations do:
+
+* `retitle_occurrences()` pushes the series' words onto its upcoming
+  occurrences, skipping any that no longer match the series' *previous* words —
+  those have been retitled by hand and say something the series does not.
+* `shift_occurrences()` moves them by a **delta**, not to an absolute hour, so
+  an evening somebody moved to another day stays moved. The seed moves too, or
+  a later extension would put the new evenings back at the old hour.
+* `extend()` only ever appends. The gap left by a cancelled or moved occurrence
+  is a decision somebody made, and refilling it would quietly undo them.
+* `cancel_beyond()` soft-cancels what a shorter `until` no longer covers, for
+  the same attendance reason.
+
+All four skip past and cancelled occurrences: an evening that has happened is a
+record of what happened. The update is atomic — a clash halfway through would
+leave the series meeting at two different times. Note that only a *retime* can
+fail that way; a rename cannot create a clash, since `_clashing_events()`
+compares times and excludes the row itself.
+
+**`EventSeriesAdmin.save_model` carries a series edit through to the calendar.**
+Occurrences are real rows, so editing the series there used to change nothing a
+resident could see — the admin reported success and the calendar kept the old
+title.
 
 **Cancellation is soft.** `Event.cancel(by=...)` sets `cancelled_at`/
 `cancelled_by` and keeps the row; the slot frees up because
@@ -340,8 +397,9 @@ naming the group inline.
 **The calendar UI is hand-built, no calendar library.** `src/lib/dates.ts` owns
 every date decision: Monday-first weeks, and `dateKey()` composing
 `YYYY-MM-DD` by hand rather than `toISOString().slice(0, 10)` — the latter is
-UTC, so an evening booking in Copenhagen would land on the previous day. Use
-these helpers instead of reaching for `Date` methods in components.
+UTC, so an evening booking in Copenhagen would land on the previous day.
+`timeKey()` is the same idea for the `HH:mm` the edit form fills its pickers
+from. Use these helpers instead of reaching for `Date` methods in components.
 
 The calendar fetches the whole visible grid, padding days included, so a
 booking on the 31st does not vanish when it falls in a neighbouring month's
@@ -349,8 +407,12 @@ row. Events are indexed by *every* day they touch (`daysCovered`), so a party
 running past midnight appears on both days.
 
 **The server decides permissions, the UI reflects them.** Each event carries
-`can_cancel`, `is_attending` and `attendee_count`, so components render from
-those rather than recomputing ownership rules client-side.
+`can_cancel`, `can_edit`, `is_attending` and `attendee_count`, so components
+render from those rather than recomputing ownership rules client-side. The one
+rule the client does restate is the private-booking policy, in
+`src/lib/policy.ts` — a form that says up front why a day is closed beats one
+that waits for a rejected submit — and both the booking form and the edit form
+read it from there rather than each keeping a copy.
 
 **Hosting is settled: UpCloud, Proton, Scaleway.** `INFRASTRUCTURE.md` records
 the decision and, more usefully, what was rejected and why — the criterion is
@@ -415,6 +477,14 @@ Deliberately unresolved — don't quietly pick one while doing something else.
   that living here is what entitles someone to the beboerlokale. Ask before
   widening it — `RESIDENTIAL_UNIT_TYPES` is a one-line change and the
   consequences are not.
+
+- **Whether a series should be able to change its rhythm.** Renaming, retiming
+  and extending one all work; changing `frequency` or `interval` does not,
+  because re-materialising the occurrences would take the attendance rows of
+  everyone who had signed up for the evenings that disappear. Deciding it means
+  deciding what those sign-ups are worth — carry them to the nearest new
+  occurrence, drop them silently, or mail the people concerned. Until then,
+  delete and recreate, which at least makes the loss visible.
 
 - **What the lawyer actually needs to draft a lease.** `ApplicationDetails` has a
   plausible field set and a `REQUIRED_FOR_CONTRACT` list, both guessed rather

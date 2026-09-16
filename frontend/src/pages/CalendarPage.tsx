@@ -112,7 +112,7 @@ export function CalendarPage() {
         ) : (
           <div className="day-panel__events">
             {selectedEvents.map((event) => (
-              <EventCard key={event.id} event={event} onChanged={reload} />
+              <EventCard key={event.id} event={event} policy={policy} onChanged={reload} />
             ))}
           </div>
         )}
