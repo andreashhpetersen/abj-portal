@@ -78,6 +78,17 @@ export function dateKey(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/**
+ * Local HH:mm of an instant — `dateKey`'s counterpart, and hand-built for the
+ * same reason. It is what the edit form fills its time pickers from, so it must
+ * be the wall-clock time the booking shows on the calendar, not a UTC one.
+ */
+export function timeKey(iso: string): string {
+  const date = new Date(iso)
+  const hours = String(date.getHours()).padStart(2, '0')
+  return `${hours}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
 export function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }

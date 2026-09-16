@@ -253,6 +253,75 @@ def test_someone_else_cannot_move_your_booking(resident, neighbour):
     assert response.status_code == 403
 
 
+def test_the_owner_can_retitle_their_public_event(resident):
+    event = make_event(resident, days_ahead=26, category=EventCategory.PUBLIC, title="Strikkecafé")
+    response = as_user(resident).patch(
+        reverse("bookings:event-detail", args=[event.pk]),
+        {"title": "Strikke- og hæklecafé", "description": "Tag dit garn med."},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    event.refresh_from_db()
+    assert event.title == "Strikke- og hæklecafé"
+    assert event.description == "Tag dit garn med."
+
+
+def test_a_booking_cannot_be_moved_inside_the_notice_period(resident):
+    """The edit route must not be a way round the rules on the create route."""
+    event = make_event(resident, days_ahead=26)
+    too_soon = timezone.now() + timedelta(days=3)
+    response = as_user(resident).patch(
+        reverse("bookings:event-detail", args=[event.pk]),
+        {"start": too_soon.isoformat(), "end": (too_soon + timedelta(hours=2)).isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "start" in response.json()
+    event.refresh_from_db()
+    assert event.start > too_soon
+
+
+def test_a_move_that_clashes_is_a_field_error_not_a_server_error(resident, neighbour):
+    taken = make_event(neighbour, days_ahead=30)
+    event = make_event(resident, days_ahead=26)
+    response = as_user(resident).patch(
+        reverse("bookings:event-detail", args=[event.pk]),
+        {"start": taken.start.isoformat(), "end": taken.end.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "start" in response.json()
+
+
+def test_a_cancelled_booking_cannot_be_edited(resident):
+    """Editing one would not reclaim its slot, so it must not look as if it had."""
+    event = make_event(resident, days_ahead=26)
+    event.cancel(by=resident)
+
+    response = as_user(resident).patch(
+        reverse("bookings:event-detail", args=[event.pk]),
+        {"end": (event.end + timedelta(hours=1)).isoformat()},
+        format="json",
+    )
+    assert response.status_code == 400
+
+
+def test_the_calendar_says_who_may_edit_each_booking(resident, neighbour, admin_user):
+    event = make_event(resident, days_ahead=24)
+    url = reverse("bookings:event-list")
+
+    assert as_user(resident).get(url).json()[0]["can_edit"] is True
+    assert as_user(neighbour).get(url).json()[0]["can_edit"] is False
+    assert as_user(admin_user).get(url).json()[0]["can_edit"] is True
+
+    event.cancel(by=resident)
+    cancelled = as_user(resident).get(url, {"include_cancelled": "true"}).json()[0]
+    assert cancelled["can_edit"] is False
+
+
 def test_only_an_admin_may_delete_a_booking_outright(resident, admin_user):
     event = make_event(resident)
 
@@ -397,6 +466,139 @@ def test_a_clashing_series_leaves_nothing_behind(resident, neighbour):
     assert response.status_code == 400
     assert EventSeries.objects.count() == 0
     assert Event.objects.count() == 1  # only the pre-existing booking survives
+
+
+def make_series(user, days_ahead=2, weeks=3, hours=3):
+    """A weekly series whose evenings are all still to come."""
+    start = timezone.now() + timedelta(days=days_ahead)
+    series = EventSeries.objects.create(
+        title="Strikkecafé",
+        description="Tag dit garn med.",
+        frequency=Frequency.WEEKLY,
+        interval=1,
+        until=(timezone.localtime(start) + timedelta(weeks=weeks)).date(),
+        created_by=user,
+        seed_start=start,
+        seed_end=start + timedelta(hours=hours),
+    )
+    series.create_occurrences(start, start + timedelta(hours=hours))
+    return series
+
+
+def test_renaming_a_series_reaches_the_calendar(resident):
+    series = make_series(resident)
+    response = as_user(resident).patch(
+        reverse("bookings:series-detail", args=[series.pk]),
+        {"title": "Strikke- og hæklecafé"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert {event.title for event in series.occurrences.all()} == {"Strikke- og hæklecafé"}
+
+
+def test_someone_else_cannot_change_your_series(resident, neighbour):
+    series = make_series(resident)
+    response = as_user(neighbour).patch(
+        reverse("bookings:series-detail", args=[series.pk]),
+        {"title": "Kapret"},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    series.refresh_from_db()
+    assert series.title == "Strikkecafé"
+
+
+def test_retiming_a_series_moves_all_of_its_evenings(resident):
+    series = make_series(resident)
+    before = sorted(event.start for event in series.occurrences.all())
+
+    response = as_user(resident).patch(
+        reverse("bookings:series-detail", args=[series.pk]),
+        {"start_shift_minutes": 30, "end_shift_minutes": 30},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    after = sorted(event.start for event in series.occurrences.all())
+    assert after == [moment + timedelta(minutes=30) for moment in before]
+
+
+def test_a_retiming_that_clashes_changes_nothing(resident, neighbour):
+    """All of it or none of it — a series meeting at two different times is
+    worse than a refusal."""
+    series = make_series(resident)
+    second = series.occurrences.order_by("start")[1]
+    Event.objects.create(
+        category=EventCategory.PUBLIC,
+        title="Beboermøde",
+        start=second.end,
+        end=second.end + timedelta(hours=2),
+        created_by=neighbour,
+    )
+    before = sorted(event.start for event in series.occurrences.all())
+
+    response = as_user(resident).patch(
+        reverse("bookings:series-detail", args=[series.pk]),
+        {"start_shift_minutes": 60, "end_shift_minutes": 60},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert sorted(event.start for event in series.occurrences.all()) == before
+
+
+def test_a_later_until_adds_evenings(resident):
+    series = make_series(resident)
+    response = as_user(resident).patch(
+        reverse("bookings:series-detail", args=[series.pk]),
+        {"until": (series.until + timedelta(days=14)).isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert series.occurrences.count() == 6
+
+
+def test_an_earlier_until_cancels_the_evenings_beyond_it(resident):
+    series = make_series(resident)
+    response = as_user(resident).patch(
+        reverse("bookings:series-detail", args=[series.pk]),
+        {"until": (series.until - timedelta(days=10)).isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert series.occurrences.count() == 4  # kept, so sign-ups survive
+    assert series.occurrences.filter(cancelled_at__isnull=False).count() == 2
+
+
+def test_the_rhythm_of_a_series_cannot_be_changed(resident):
+    """Changing how often it meets is a different series, not an edit."""
+    series = make_series(resident)
+    response = as_user(resident).patch(
+        reverse("bookings:series-detail", args=[series.pk]),
+        {"frequency": Frequency.DAILY, "interval": 3},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    series.refresh_from_db()
+    assert series.frequency == Frequency.WEEKLY
+    assert series.interval == 1
+
+
+def test_a_series_cannot_be_made_to_end_before_it_began(resident):
+    series = make_series(resident)
+    response = as_user(resident).patch(
+        reverse("bookings:series-detail", args=[series.pk]),
+        {"until": (timezone.localdate() - timedelta(days=30)).isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "until" in response.json()
 
 
 # --- the booking policy -----------------------------------------------------

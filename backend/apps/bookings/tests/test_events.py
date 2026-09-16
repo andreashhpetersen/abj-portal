@@ -177,6 +177,86 @@ def test_public_events_ignore_the_private_booking_window(resident):
     assert Event.objects.count() == 2
 
 
+# --- moving an existing booking ---------------------------------------------
+
+
+def test_a_booking_cannot_be_moved_into_the_past(resident):
+    event = Event.objects.get(pk=book(resident, days_ahead=20).pk)
+    event.start = timezone.now() - timedelta(hours=1)
+    event.end = event.start + timedelta(hours=2)
+
+    with pytest.raises(ValidationError) as caught:
+        event.full_clean()
+    assert "start" in caught.value.error_dict
+
+
+def test_a_private_booking_cannot_be_moved_inside_the_notice_period(resident):
+    """Regression: editing must not be a way round the fortnight's notice."""
+    event = Event.objects.get(pk=book(resident, days_ahead=20).pk)
+    event.start, event.end = slot(3)
+
+    with pytest.raises(ValidationError) as caught:
+        event.full_clean()
+    assert "start" in caught.value.error_dict
+
+
+def test_an_existing_private_booking_can_be_retimed_on_its_own_day(resident):
+    """The notice period is about which day the room is spoken for. Re-testing
+    it on every save would make a booking uneditable exactly as it drew near,
+    which is when the times tend to need correcting."""
+    booking = book(resident, days_ahead=20)
+    tighten_notice_to(30)  # as if the booked day had drawn nearer
+
+    event = Event.objects.get(pk=booking.pk)
+    event.start += timedelta(minutes=30)
+    event.end += timedelta(hours=2)
+    event.full_clean()  # does not raise
+
+
+def test_an_existing_private_booking_cannot_be_moved_to_a_day_it_could_not_claim(resident):
+    booking = book(resident, days_ahead=20)
+    tighten_notice_to(30)
+
+    event = Event.objects.get(pk=booking.pk)
+    event.start, event.end = slot(25)
+
+    with pytest.raises(ValidationError) as caught:
+        event.full_clean()
+    assert "start" in caught.value.error_dict
+
+
+def test_turning_a_public_event_private_applies_the_private_rules(resident):
+    """A public event may sit three days out; the same slot claimed privately
+    may not, so the change of category is itself a fresh claim."""
+    booking = book(resident, days_ahead=3, category=EventCategory.PUBLIC, title="Sommerfest")
+
+    event = Event.objects.get(pk=booking.pk)
+    event.category = EventCategory.PRIVATE
+    event.title = ""
+
+    with pytest.raises(ValidationError) as caught:
+        event.full_clean()
+    assert "start" in caught.value.error_dict
+
+
+def test_a_booking_loaded_from_the_database_can_still_be_cancelled(resident):
+    """Regression: the rules a move has to pass must not reach cancellation,
+    which leaves the day and the category exactly as they were."""
+    booking = book(resident, days_ahead=20)
+    policy = BookingSettings.load()
+    policy.private_bookings_enabled = False
+    policy.save()
+
+    Event.objects.get(pk=booking.pk).cancel(by=resident)  # must not raise
+    assert Event.objects.get(pk=booking.pk).is_cancelled is True
+
+
+def tighten_notice_to(days):
+    policy = BookingSettings.load()
+    policy.private_booking_min_notice_days = days
+    policy.save()
+
+
 # --- which weekdays the room is available -----------------------------------
 
 

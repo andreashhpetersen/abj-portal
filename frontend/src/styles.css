@@ -559,6 +559,13 @@ button:disabled {
   color: var(--color-text);
 }
 
+/* Inside an event card the form is the card's body, not a new section under
+   it, so it drops the rule that separates the day panel's form from the list. */
+.booking-form--edit {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+
 .booking-form__times {
   display: grid;
   grid-template-columns: 1fr 1fr;

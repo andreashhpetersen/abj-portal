@@ -139,7 +139,7 @@ export function CalendarPage() {
         ) : loading ? (
           <p className="status">Indlæser…</p>
         ) : (
-          <PublicEventList month={month} events={events} onChanged={reload} />
+          <PublicEventList month={month} events={events} policy={policy} onChanged={reload} />
         )}
       </section>
 
@@ -153,7 +153,7 @@ export function CalendarPage() {
         ) : (
           <div className="day-panel__events">
             {selectedEvents.map((event) => (
-              <EventCard key={event.id} event={event} onChanged={reload} />
+              <EventCard key={event.id} event={event} policy={policy} onChanged={reload} />
             ))}
           </div>
         )}

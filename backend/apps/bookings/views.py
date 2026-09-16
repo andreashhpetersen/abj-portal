@@ -30,6 +30,7 @@ from .serializers import (
     BookingSettingsSerializer,
     EventSerializer,
     EventSeriesSerializer,
+    EventSeriesUpdateSerializer,
 )
 
 
@@ -130,20 +131,31 @@ class EventSeriesViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Recurring public events. Editing a pattern in place is not supported —
-    cancel the occurrences you do not want, or delete and recreate the series."""
+    """Recurring public events.
 
-    serializer_class = EventSeriesSerializer
+    A series can be renamed, retimed and made to run longer or stop sooner. Its
+    *rhythm* cannot be changed — see `EventSeriesUpdateSerializer` — so changing
+    how often it meets is still delete and recreate.
+    """
+
     queryset = EventSeries.objects.select_related("created_by").prefetch_related(
         "occurrences__created_by"
     )
 
+    def get_serializer_class(self):
+        if self.action in {"update", "partial_update"}:
+            return EventSeriesUpdateSerializer
+        return EventSeriesSerializer
+
     def get_permissions(self):
         if self.action == "destroy":
             return [permissions.IsAuthenticated(), permissions.IsAdminUser()]
+        if self.action in {"update", "partial_update"}:
+            return [permissions.IsAuthenticated(), IsOwnerOrAdmin()]
         return [permissions.IsAuthenticated()]
 
 

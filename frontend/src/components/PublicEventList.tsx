@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import type { BookingEvent } from '../api/bookings'
+import type { BookingEvent, BookingPolicy } from '../api/bookings'
 import { formatDayShort, formatMonth, formatTimeRange, isSameMonth } from '../lib/dates'
 import { EventDetails } from './EventDetails'
 
@@ -9,6 +9,9 @@ interface Props {
   /** The same events the grid draws — fetched for the whole visible grid, so
    *  this is a superset of the month and needs narrowing, not another request. */
   events: BookingEvent[]
+  /** Passed through to the edit form, which restates the private-booking
+   *  policy rather than waiting for the server to refuse the move. */
+  policy: BookingPolicy | null
   onChanged: () => Promise<void> | void
 }
 
@@ -20,7 +23,7 @@ interface Props {
  * a weekday — a party running past midnight on the 31st belongs to the month it
  * began in, not to the one it spilled into.
  */
-export function PublicEventList({ month, events, onChanged }: Props) {
+export function PublicEventList({ month, events, policy, onChanged }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null)
 
   const listed = useMemo(
@@ -61,7 +64,7 @@ export function PublicEventList({ month, events, onChanged }: Props) {
 
             {open && (
               <div id={`event-${event.id}-details`} className="event-list__details">
-                <EventDetails event={event} onChanged={onChanged} />
+                <EventDetails event={event} policy={policy} onChanged={onChanged} />
               </div>
             )}
           </li>
