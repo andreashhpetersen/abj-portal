@@ -78,6 +78,17 @@ export function dateKey(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/**
+ * Local HH:mm of an instant — `dateKey`'s counterpart, and hand-built for the
+ * same reason. It is what the edit form fills its time pickers from, so it must
+ * be the wall-clock time the booking shows on the calendar, not a UTC one.
+ */
+export function timeKey(iso: string): string {
+  const date = new Date(iso)
+  const hours = String(date.getHours()).padStart(2, '0')
+  return `${hours}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
 export function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
@@ -151,6 +162,16 @@ export function daysSince(iso: string): number {
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   return Math.round((today.getTime() - start.getTime()) / 86_400_000)
+}
+
+/** Weekday and date of an instant, e.g. "lør. 12. sep." — for the event list,
+ *  where the month is already stated above the list and the year with it. */
+export function formatDayShort(iso: string): string {
+  return new Date(iso).toLocaleDateString('da-DK', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  })
 }
 
 export function formatDayLong(date: Date): string {

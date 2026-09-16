@@ -351,6 +351,89 @@ button:disabled {
   margin-left: 0.75rem;
 }
 
+/* The switch between the grid and the event list sits at the top of the card,
+   so it does not need the leading margin a tab row in mid-page does. */
+.tabs--views {
+  margin-top: 0;
+}
+
+/* --- event list ---------------------------------------------------------- */
+
+/* The month's shared arrangements, one per row, opening in place. */
+.event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.event-list__item {
+  border-bottom: 1px solid #e2e0da;
+}
+
+.event-list__item:last-child {
+  border-bottom: 0;
+}
+
+/* The whole row is the control, so there is one keyboard target per event and
+   no small arrow to aim at. */
+.event-list__summary {
+  display: grid;
+  grid-template-columns: 1rem 1fr auto;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+  padding: 0.7rem 0.25rem;
+  text-align: left;
+  font: inherit;
+}
+
+.event-list__summary:hover {
+  background: #f0efe9;
+}
+
+.event-list__marker {
+  color: var(--color-accent);
+  font-size: 0.8rem;
+}
+
+.event-list__title {
+  font-weight: 600;
+}
+
+.event-list__when {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* On a phone the date drops under the title rather than squeezing it. */
+@media (max-width: 30rem) {
+  .event-list__summary {
+    grid-template-columns: 1rem 1fr;
+  }
+
+  .event-list__when {
+    grid-column: 2;
+    white-space: normal;
+  }
+}
+
+.event-list__details {
+  border-left: 3px solid var(--color-accent);
+  margin: 0 0 0.75rem 1.5rem;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+}
+
+.event-list__empty {
+  color: var(--color-muted);
+  margin: 0.5rem 0 0;
+}
+
 /* --- day panel ----------------------------------------------------------- */
 
 .day-panel__title {
@@ -474,6 +557,13 @@ button:disabled {
   gap: 0.35rem;
   font-size: 0.9rem;
   color: var(--color-text);
+}
+
+/* Inside an event card the form is the card's body, not a new section under
+   it, so it drops the rule that separates the day panel's form from the list. */
+.booking-form--edit {
+  border-top: none;
+  padding-top: 0.25rem;
 }
 
 .booking-form__times {

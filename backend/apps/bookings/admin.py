@@ -50,6 +50,22 @@ class EventSeriesAdmin(admin.ModelAdmin):
     def occurrence_count(self, obj):
         return obj.occurrences.count()
 
+    def save_model(self, request, obj, form, change):
+        """Carry a rename through to the calendar.
+
+        Occurrences are real rows, so editing the series here used to change
+        nothing a resident could see — the admin reported success and the
+        calendar kept the old title. A shorter `until` cancels the evenings it
+        no longer covers; a longer one materialises the evenings it now reaches.
+        """
+        previous = EventSeries.objects.filter(pk=obj.pk).first() if change else None
+        super().save_model(request, obj, form, change)
+        if previous is None:
+            return
+        obj.retitle_occurrences(previous.title, previous.description)
+        obj.extend()
+        obj.cancel_beyond(by=request.user)
+
 
 @admin.register(BookingSettings)
 class BookingSettingsAdmin(admin.ModelAdmin):

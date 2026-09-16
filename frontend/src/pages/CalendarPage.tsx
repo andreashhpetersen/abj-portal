@@ -5,6 +5,11 @@
  * whole visible grid — including the padding days from neighbouring months, so
  * a booking on the 31st does not vanish when it sits in the previous month's
  * last row.
+ *
+ * The same fetch feeds both readings of the month: the grid, which shows when
+ * the room is taken, and the list of shared arrangements, which is the one
+ * people scan for something to turn up to. Switching between them is a
+ * rearrangement of events already in hand, not another request.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -14,10 +19,15 @@ import { bookings } from '../api/bookings'
 import { BookingForm } from '../components/BookingForm'
 import { EventCard } from '../components/EventCard'
 import { MonthGrid } from '../components/MonthGrid'
+import { MonthNav } from '../components/MonthNav'
+import { PublicEventList } from '../components/PublicEventList'
 import { dateKey, daysCovered, formatDayLong, monthGrid, startOfMonth } from '../lib/dates'
+
+type View = 'grid' | 'list'
 
 export function CalendarPage() {
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
+  const [view, setView] = useState<View>('grid')
   const [selected, setSelected] = useState(() => dateKey(new Date()))
   const [events, setEvents] = useState<BookingEvent[]>([])
   const [policy, setPolicy] = useState<BookingPolicy | null>(null)
@@ -94,13 +104,44 @@ export function CalendarPage() {
         </p>
       )}
 
-      <MonthGrid
-        month={month}
-        selected={selected}
-        eventsByDay={eventsByDay}
-        onSelect={setSelected}
-        onChangeMonth={setMonth}
-      />
+      <section
+        className="calendar"
+        aria-label={view === 'grid' ? 'Kalender' : 'Fælles arrangementer'}
+      >
+        <nav className="tabs tabs--views">
+          <button
+            type="button"
+            className={view === 'grid' ? 'tab tab--on' : 'tab'}
+            aria-pressed={view === 'grid'}
+            onClick={() => setView('grid')}
+          >
+            Kalender
+          </button>
+          <button
+            type="button"
+            className={view === 'list' ? 'tab tab--on' : 'tab'}
+            aria-pressed={view === 'list'}
+            onClick={() => setView('list')}
+          >
+            Arrangementer
+          </button>
+        </nav>
+
+        <MonthNav month={month} onChangeMonth={setMonth} />
+
+        {view === 'grid' ? (
+          <MonthGrid
+            month={month}
+            selected={selected}
+            eventsByDay={eventsByDay}
+            onSelect={setSelected}
+          />
+        ) : loading ? (
+          <p className="status">Indlæser…</p>
+        ) : (
+          <PublicEventList month={month} events={events} policy={policy} onChanged={reload} />
+        )}
+      </section>
 
       <aside className="day-panel card">
         <h2 className="day-panel__title">{formatDayLong(selectedDate)}</h2>
@@ -112,7 +153,7 @@ export function CalendarPage() {
         ) : (
           <div className="day-panel__events">
             {selectedEvents.map((event) => (
-              <EventCard key={event.id} event={event} onChanged={reload} />
+              <EventCard key={event.id} event={event} policy={policy} onChanged={reload} />
             ))}
           </div>
         )}

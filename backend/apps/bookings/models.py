@@ -9,11 +9,12 @@ place the "one room" assumption lives.
 Rules enforced at the model layer, so they hold no matter what creates an event
 — the API, the admin, a shell session or an import:
 
-* an event ends after it starts, and new events are not in the past
+* an event ends after it starts, and no booking starts in the past
 * two live events never overlap (a cancelled one frees its slot)
 * public events carry a title; private ones carry none, since the calendar
   shows only who booked and how to reach them
-* private bookings respect the association's toggle and booking horizon
+* private bookings respect the association's toggle and booking horizon when
+  they are made, and again whenever an edit moves them to another day
 
 Admins are exempt from the private-booking restrictions: the brief gives them
 the ability to edit and delete everything, which is worth little if they cannot
@@ -145,6 +146,13 @@ class EventSeries(models.Model):
         help_text=_("Repeat every N periods — 2 with 'weekly' means every second week."),
     )
     until = models.DateField(_("until"), help_text=_("Last date an occurrence may fall on."))
+    # The pattern's origin, not a copy of the first occurrence. An occurrence
+    # can be moved by hand, and the pattern must not drift when one is — without
+    # this, extending a series would re-materialise it from wherever somebody
+    # happened to drag the first evening. Null only on series created before the
+    # column existed; `pattern_seed` falls back for those.
+    seed_start = models.DateTimeField(_("pattern start"), null=True, blank=True)
+    seed_end = models.DateTimeField(_("pattern end"), null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -193,10 +201,17 @@ class EventSeries(models.Model):
             return relativedelta(weeks=periods)
         return relativedelta(months=periods)
 
-    def create_occurrences(self, start, end):
-        """Materialise the series. Returns the created events in date order."""
+    def create_occurrences(self, start, end, after=None):
+        """Materialise the series. Returns the created events in date order.
+
+        `after` skips everything up to and including that instant, which is how
+        a later `until` adds evenings to the end of a series without disturbing
+        the ones already on the calendar.
+        """
         created = []
         for occurrence_start, occurrence_end in self.occurrence_times(start, end):
+            if after is not None and occurrence_start <= after:
+                continue
             created.append(
                 Event.objects.create(
                     category=EventCategory.PUBLIC,
@@ -209,6 +224,107 @@ class EventSeries(models.Model):
                 )
             )
         return created
+
+    def pattern_seed(self):
+        """The times the pattern is generated from, or (None, None) if unknown.
+
+        Older series predate `seed_start`, so fall back to the earliest
+        occurrence — which is what they were generated from anyway.
+        """
+        if self.seed_start and self.seed_end:
+            return self.seed_start, self.seed_end
+        first = self.occurrences.order_by("start").first()
+        return (first.start, first.end) if first else (None, None)
+
+    def upcoming_occurrences(self):
+        """The occurrences a change to the series may touch.
+
+        Not the past ones: an evening that has happened is a record of what
+        happened, and renaming it afterwards makes the archive lie. Not the
+        cancelled ones either — somebody settled those by hand.
+        """
+        return self.occurrences.filter(
+            cancelled_at__isnull=True, start__gte=timezone.now()
+        ).order_by("start")
+
+    def retitle_occurrences(self, was_titled, was_described):
+        """Push the series' words onto its upcoming occurrences.
+
+        An occurrence somebody has already retitled by hand keeps its own: it
+        says something the series does not, and a rename of the series is no
+        reason to lose it. That is what the previous values are for — they say
+        which occurrences were still speaking for the series.
+        """
+        changed = []
+        for occurrence in self.upcoming_occurrences():
+            speaks_for_the_series = (
+                occurrence.title == was_titled and occurrence.description == was_described
+            )
+            if not speaks_for_the_series:
+                continue
+            if occurrence.title == self.title and occurrence.description == self.description:
+                continue
+            occurrence.title = self.title
+            occurrence.description = self.description
+            occurrence.save()
+            changed.append(occurrence)
+        return changed
+
+    def shift_occurrences(self, start_delta, end_delta):
+        """Move every upcoming occurrence by the same amount of wall-clock time.
+
+        A delta rather than a recomputed time, so an occurrence somebody moved
+        to another evening moves with the rest instead of snapping back, and a
+        series that meets for longer on one date keeps that difference. The
+        origin moves too — otherwise extending the series later would put the
+        new evenings back at the old hour.
+        """
+        for occurrence in self.upcoming_occurrences():
+            occurrence.start = shift_wall_clock(occurrence.start, start_delta)
+            occurrence.end = shift_wall_clock(occurrence.end, end_delta)
+            occurrence.save()
+
+        seed_start, seed_end = self.pattern_seed()
+        if seed_start is not None:
+            self.seed_start = shift_wall_clock(seed_start, start_delta)
+            self.seed_end = shift_wall_clock(seed_end, end_delta)
+            self.save()
+
+    def extend(self):
+        """Materialise the evenings a later `until` now reaches.
+
+        Only ever appends. The gap left by a cancelled or moved occurrence is a
+        decision somebody made, and refilling it would quietly undo them.
+        """
+        seed_start, seed_end = self.pattern_seed()
+        if seed_start is None:
+            return []
+        last = self.occurrences.order_by("-start").first()
+        return self.create_occurrences(seed_start, seed_end, after=last.start if last else None)
+
+    def cancel_beyond(self, by):
+        """Cancel the upcoming occurrences an earlier `until` no longer covers.
+
+        Cancelled, not deleted: people may have signed up for them, and the
+        `EventAttendance` rows would go with the events.
+        """
+        cancelled = []
+        for occurrence in self.upcoming_occurrences():
+            if timezone.localdate(occurrence.start) > self.until:
+                occurrence.cancel(by=by)
+                cancelled.append(occurrence)
+        return cancelled
+
+
+def shift_wall_clock(moment, delta):
+    """Move an instant by local wall-clock time rather than by elapsed time.
+
+    Same reasoning as `occurrence_times`: an evening moved half an hour later
+    should read 19:30 on both sides of a clock change, not 18:30 on one of them.
+    """
+    current_tz = timezone.get_current_timezone()
+    naive = timezone.localtime(moment, current_tz).replace(tzinfo=None) + delta
+    return timezone.make_aware(naive, current_tz)
 
 
 class Event(models.Model):
@@ -269,6 +385,14 @@ class Event(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        """Remember where the booking stood, so `clean` can tell an edit that
+        re-places it from one that merely adjusts it."""
+        instance = super().from_db(db, field_names, values)
+        instance._placed_as = (instance.category, instance.start)
+        return instance
+
     @property
     def is_cancelled(self):
         return self.cancelled_at is not None
@@ -311,7 +435,7 @@ class Event(models.Model):
         if self.start and self.end and self.end <= self.start:
             errors["end"] = _("The event must end after it starts.")
 
-        if self._state.adding and self.start and self.start < timezone.now():
+        if self.start and self.start < timezone.now() and (self._state.adding or self._start_moved):
             errors["start"] = _("The event cannot start in the past.")
 
         if self.category == EventCategory.PUBLIC and not self.title:
@@ -328,14 +452,43 @@ class Event(models.Model):
         if not errors and self.start and self.end and self._clashing_events().exists():
             errors["start"] = _("The room is already booked in that period.")
 
-        # Only when booking. The toggle and horizon govern whether a booking may
-        # be *made*; flipping the toggle must not strand existing bookings in a
-        # state where they cannot even be cancelled.
-        if self._state.adding and self.category == EventCategory.PRIVATE and self.start:
+        # Only when the booking is placed. The toggle and horizon govern whether
+        # a booking may be *made*; testing them on every save would strand
+        # existing bookings in a state where they cannot even be cancelled.
+        if self._is_being_placed and self.category == EventCategory.PRIVATE and self.start:
             errors.update(self._private_booking_errors())
 
         if errors:
             raise ValidationError(errors)
+
+    @property
+    def _start_moved(self):
+        """Whether this save gives the booking a start it did not have."""
+        placed_as = getattr(self, "_placed_as", None)
+        return placed_as is not None and placed_as[1] != self.start
+
+    @property
+    def _is_being_placed(self):
+        """Whether this save claims a slot the booking did not already hold.
+
+        Creating it, of course, but also moving it to another day or turning a
+        public event private — each is a resident claiming the room under the
+        private-booking policy, so each has to satisfy it. Editing an existing
+        booking is otherwise not a fresh claim: shifting the hour within the
+        booked day, correcting the finishing time, or cancelling all leave the
+        day the neighbours were told about unchanged, and re-testing the notice
+        period on those would make a booking uneditable the moment it came
+        within a fortnight — and uncancellable once private bookings closed.
+        """
+        if self._state.adding:
+            return True
+        placed_as = getattr(self, "_placed_as", None)
+        if placed_as is None or self.start is None:
+            return False
+        category, start = placed_as
+        return self.category != category or (
+            timezone.localdate(start) != timezone.localdate(self.start)
+        )
 
     def _private_booking_errors(self):
         """The policy for private bookings, none of which binds an admin."""

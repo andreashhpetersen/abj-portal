@@ -8,9 +8,11 @@ DRF would return a 500 where the client deserves a field-level 400.
 """
 
 import copy
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.accounts.serializers import ContactSerializer
@@ -32,6 +34,7 @@ class EventSerializer(serializers.ModelSerializer):
     attendee_count = serializers.SerializerMethodField()
     is_attending = serializers.SerializerMethodField()
     can_cancel = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -49,6 +52,7 @@ class EventSerializer(serializers.ModelSerializer):
             "attendee_count",
             "is_attending",
             "can_cancel",
+            "can_edit",
         ]
         read_only_fields = ["id", "created_by", "series", "cancelled_at"]
 
@@ -68,7 +72,23 @@ class EventSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         return not obj.is_cancelled and (user.is_staff or obj.created_by_id == user.pk)
 
+    def get_can_edit(self, obj) -> bool:
+        """Whether the requesting user may change this booking.
+
+        The same people who may cancel it, and for the same reason it is asked
+        separately: a cancelled booking is a record, not a plan. Editing one
+        would not reclaim its slot — `_clashing_events` ignores cancelled
+        events — so it would look like a rebooking and be nothing of the kind.
+        """
+        user = self.context["request"].user
+        return not obj.is_cancelled and (user.is_staff or obj.created_by_id == user.pk)
+
     def validate(self, attrs):
+        if self.instance is not None and self.instance.is_cancelled:
+            raise serializers.ValidationError(
+                {"detail": "En aflyst booking kan ikke ændres. Lav en ny booking i stedet."}
+            )
+
         # Build the instance the write would produce and validate that, so the
         # model's rules — overlap, horizon, title — become 400s with field names.
         if self.instance is None:
@@ -121,7 +141,12 @@ class EventSeriesSerializer(serializers.ModelSerializer):
         # half its evenings booked is worse than no series at all.
         with transaction.atomic():
             series = EventSeries.objects.create(
-                created_by=self.context["request"].user, **validated_data
+                created_by=self.context["request"].user,
+                # Remember the pattern's origin. Occurrences can be moved one at
+                # a time, so they cannot be trusted to say where it began.
+                seed_start=start,
+                seed_end=end,
+                **validated_data,
             )
             try:
                 series.create_occurrences(start, end)
@@ -135,6 +160,90 @@ class EventSeriesSerializer(serializers.ModelSerializer):
                     }
                 ) from error
         return series
+
+
+class EventSeriesUpdateSerializer(serializers.ModelSerializer):
+    """Changing a series after the fact.
+
+    What it is called, what time of day it meets, and how long it runs for —
+    but never *how often*, because a different rhythm is a different series.
+    Re-materialising one would have to decide what becomes of the evenings
+    people have already signed up for, and that is a question for the board
+    rather than a default. Deleting and recreating remains the way to do it.
+
+    The times move by a delta rather than to an absolute hour: the client knows
+    what the occurrence it is editing used to be, and a delta is what leaves an
+    evening somebody moved by hand still moved.
+    """
+
+    #: Half a day either way. This retimes a series; it does not reschedule it.
+    SHIFT_LIMIT_MINUTES = 720
+
+    created_by = ContactSerializer(read_only=True)
+    start_shift_minutes = serializers.IntegerField(
+        required=False,
+        default=0,
+        write_only=True,
+        min_value=-SHIFT_LIMIT_MINUTES,
+        max_value=SHIFT_LIMIT_MINUTES,
+    )
+    end_shift_minutes = serializers.IntegerField(
+        required=False,
+        default=0,
+        write_only=True,
+        min_value=-SHIFT_LIMIT_MINUTES,
+        max_value=SHIFT_LIMIT_MINUTES,
+    )
+
+    class Meta:
+        model = EventSeries
+        fields = [
+            "id",
+            "title",
+            "description",
+            "frequency",
+            "interval",
+            "until",
+            "created_by",
+            "created_at",
+            "start_shift_minutes",
+            "end_shift_minutes",
+        ]
+        read_only_fields = ["id", "frequency", "interval", "created_by", "created_at"]
+
+    def validate_until(self, value):
+        seed_start, _seed_end = self.instance.pattern_seed()
+        if seed_start is not None and value < timezone.localdate(seed_start):
+            raise serializers.ValidationError("Serien ville slutte, før den begyndte.")
+        return value
+
+    def update(self, instance, validated_data):
+        start_shift = timedelta(minutes=validated_data.pop("start_shift_minutes", 0))
+        end_shift = timedelta(minutes=validated_data.pop("end_shift_minutes", 0))
+        was_titled, was_described = instance.title, instance.description
+
+        # All of it or none of it. A clash halfway through would leave the
+        # series meeting at two different times, which is worse than a refusal.
+        with transaction.atomic():
+            for field, value in validated_data.items():
+                setattr(instance, field, value)
+            instance.save()
+            try:
+                instance.retitle_occurrences(was_titled, was_described)
+                if start_shift or end_shift:
+                    instance.shift_occurrences(start_shift, end_shift)
+                instance.extend()
+                instance.cancel_beyond(by=self.context["request"].user)
+            except DjangoValidationError as error:
+                raise serializers.ValidationError(
+                    {
+                        "start_shift_minutes": [
+                            "En af gangene støder sammen med en anden booking: "
+                            f"{'; '.join(sum(error.message_dict.values(), []))}"
+                        ]
+                    }
+                ) from error
+        return instance
 
 
 class BookingSettingsSerializer(serializers.ModelSerializer):
