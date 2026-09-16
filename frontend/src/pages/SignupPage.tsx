@@ -17,6 +17,7 @@ import { Link, Navigate } from 'react-router-dom'
 
 import { auth } from '../api/auth'
 import { ApiError, fieldErrors } from '../api/client'
+import logo from '../assets/logo.png'
 import { useAuth } from '../auth/AuthContext'
 
 import type { SignupPayload } from '../api/auth'
@@ -84,6 +85,9 @@ export function SignupPage() {
   if (receipt !== null) {
     return (
       <div className="login">
+        <div className="login__brand">
+          <img src={logo} alt="A/B Jæger" className="login__logo" />
+        </div>
         <div className="card login__form">
           <h1>Tak</h1>
           <p>{receipt}</p>
@@ -95,6 +99,9 @@ export function SignupPage() {
 
   return (
     <div className="login">
+      <div className="login__brand">
+        <img src={logo} alt="A/B Jæger" className="login__logo" />
+      </div>
       <form className="card login__form signup" onSubmit={handleSubmit}>
         <h1>Opret bruger</h1>
         <p className="hint">

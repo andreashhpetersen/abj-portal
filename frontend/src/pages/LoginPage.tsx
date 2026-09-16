@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 import { ApiError } from '../api/client'
+import logo from '../assets/logo.png'
 import { useAuth } from '../auth/AuthContext'
 
 import type { FormEvent } from 'react'
@@ -35,6 +36,9 @@ export function LoginPage() {
 
   return (
     <div className="login">
+      <div className="login__brand">
+        <img src={logo} alt="A/B Jæger" className="login__logo" />
+      </div>
       <form className="card login__form" onSubmit={handleSubmit}>
         <h1>Log ind</h1>
         <label htmlFor="email">Email</label>
