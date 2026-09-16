@@ -7,40 +7,22 @@ interface Props {
   selected: string
   eventsByDay: Map<string, BookingEvent[]>
   onSelect: (day: string) => void
-  onChangeMonth: (month: Date) => void
 }
 
 /**
  * The month view. Each day shows a dot per booking rather than the bookings
  * themselves — the detail belongs in the day panel, and dots survive a narrow
  * phone screen where text would not.
+ *
+ * Which month is on show, and the buttons that change it, live in `MonthNav`
+ * above: the grid and the event list are two readings of one month.
  */
-export function MonthGrid({ month, selected, eventsByDay, onSelect, onChangeMonth }: Props) {
+export function MonthGrid({ month, selected, eventsByDay, onSelect }: Props) {
   const today = dateKey(new Date())
   const days = monthGrid(month)
 
   return (
-    <section className="calendar" aria-label="Kalender">
-      <header className="calendar__header">
-        <button
-          type="button"
-          className="calendar__nav"
-          onClick={() => onChangeMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-          aria-label="Forrige måned"
-        >
-          ‹
-        </button>
-        <h2 className="calendar__title">{formatMonth(month)}</h2>
-        <button
-          type="button"
-          className="calendar__nav"
-          onClick={() => onChangeMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-          aria-label="Næste måned"
-        >
-          ›
-        </button>
-      </header>
-
+    <>
       <div className="calendar__weekdays" aria-hidden="true">
         <span className="calendar__week-heading">uge</span>
         {WEEKDAYS.map((weekday) => (
@@ -100,6 +82,6 @@ export function MonthGrid({ month, selected, eventsByDay, onSelect, onChangeMont
         <span className="dot dot--public" /> Fælles arrangement
         <span className="dot dot--private" /> Privat booking
       </p>
-    </section>
+    </>
   )
 }

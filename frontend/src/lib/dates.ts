@@ -153,6 +153,16 @@ export function daysSince(iso: string): number {
   return Math.round((today.getTime() - start.getTime()) / 86_400_000)
 }
 
+/** Weekday and date of an instant, e.g. "lør. 12. sep." — for the event list,
+ *  where the month is already stated above the list and the year with it. */
+export function formatDayShort(iso: string): string {
+  return new Date(iso).toLocaleDateString('da-DK', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
 export function formatDayLong(date: Date): string {
   return date.toLocaleDateString('da-DK', { weekday: 'long', day: 'numeric', month: 'long' })
 }

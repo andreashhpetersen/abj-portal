@@ -348,6 +348,17 @@ booking on the 31st does not vanish when it falls in a neighbouring month's
 row. Events are indexed by *every* day they touch (`daysCovered`), so a party
 running past midnight appears on both days.
 
+**The grid and the event list are two readings of one fetch.** `CalendarPage`
+holds the month, the events and the view; `MonthGrid` draws when the room is
+taken and `PublicEventList` the shared arrangements worth turning up to, and
+switching between them rearranges events already in hand rather than asking the
+API again — which is why the list narrows the grid's range to the month itself
+instead of taking `?category=public`. A row is filed under the day it *starts*,
+the same way the booking rules judge a weekday. `MonthNav` is shared so the two
+views step through the month with one control, and `EventDetails` is shared so
+the attend and cancel buttons exist once: what they may do is decided by the
+server, and a second copy is a second chance to get that wrong.
+
 **The server decides permissions, the UI reflects them.** Each event carries
 `can_cancel`, `is_attending` and `attendee_count`, so components render from
 those rather than recomputing ownership rules client-side.
