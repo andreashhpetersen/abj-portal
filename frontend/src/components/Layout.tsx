@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
+import logo from '../assets/logo.png'
 import { useAuth } from '../auth/AuthContext'
 
 /** App shell: header, navigation, and the routed page below it. */
@@ -9,7 +10,10 @@ export function Layout() {
   return (
     <div className="app">
       <header className="app-header">
-        <div className="app-header__brand">Beboerportal</div>
+        <div className="app-header__brand">
+          <img src={logo} alt="" className="app-header__logo" />
+          Beboerportal
+        </div>
         <nav className="app-nav">
           <NavLink to="/" end>
             Kalender

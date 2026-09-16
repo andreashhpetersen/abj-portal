@@ -9,6 +9,7 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { auth } from '../api/auth'
 import { fieldErrors } from '../api/client'
+import logo from '../assets/logo.png'
 
 import type { FormEvent } from 'react'
 
@@ -48,6 +49,9 @@ export function ResetPasswordPage() {
   if (done) {
     return (
       <div className="login">
+        <div className="login__brand">
+          <img src={logo} alt="A/B Jæger" className="login__logo" />
+        </div>
         <div className="card login__form">
           <h1>Adgangskoden er nulstillet</h1>
           <p>Du kan nu logge ind med din nye adgangskode.</p>
@@ -59,6 +63,9 @@ export function ResetPasswordPage() {
 
   return (
     <div className="login">
+      <div className="login__brand">
+        <img src={logo} alt="A/B Jæger" className="login__logo" />
+      </div>
       <form className="card login__form signup" onSubmit={handleSubmit}>
         <h1>Vælg ny adgangskode</h1>
 

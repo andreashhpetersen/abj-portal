@@ -1,16 +1,25 @@
-/* Minimal mobile-first styling. Deliberately plain: swap in a component
-   library or design system later without unpicking layout hacks. */
+/* Mobile-first styling, warmed up: the palette is the association's own —
+   limewashed courtyard render, the patina green already used for the accent,
+   and a brick red pulled from the building's own brickwork — rather than a
+   neutral system default. */
 
 :root {
-  --color-bg: #f6f5f2;
-  --color-surface: #ffffff;
-  --color-text: #1c1c1a;
-  --color-muted: #5f5f58;
+  --color-bg: #efe8da;
+  --color-surface: #fffcf6;
+  --color-text: #2a241d;
+  --color-muted: #6b6153;
   --color-accent: #2f5d50;
+  --color-accent-dark: #24463c;
+  --color-brick: #ab4a28;
+  --color-brick-dark: #8c3c1f;
   --color-error: #a52a2a;
-  --radius: 10px;
+  --color-border: #e3d9c4;
+  --radius: 14px;
+  --radius-sm: 8px;
   --space: 1rem;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --shadow: 0 2px 12px rgb(42 36 29 / 10%);
+  --font-display: 'Bitter', Georgia, 'Times New Roman', serif;
+  font-family: 'Karla', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
 }
 
@@ -25,19 +34,47 @@ body {
   line-height: 1.5;
 }
 
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+a,
+a:visited {
+  color: var(--color-accent);
+}
+
+a:hover {
+  color: var(--color-accent-dark);
+}
+
 .app-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space);
-  padding: var(--space);
+  padding: 0.75rem var(--space);
   background: var(--color-surface);
-  border-bottom: 1px solid #e2e0da;
+  border-bottom: 3px solid var(--color-brick);
 }
 
 .app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-display);
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
+  color: var(--color-accent-dark);
+}
+
+.app-header__logo {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
 }
 
 .app-nav {
@@ -76,13 +113,29 @@ body {
   background: var(--color-surface);
   border-radius: var(--radius);
   padding: 1.5rem;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+  box-shadow: var(--shadow);
 }
 
 .login {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   padding: 3rem var(--space);
+}
+
+/* The seal that sits over the front door, welcoming residents in rather than
+   just naming the product. A soft glow behind it and a thin arched rule below
+   echo the ring already drawn into the mark, instead of boxing it in a card. */
+.login__brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.login__logo {
+  width: 6.5rem;
+  height: 6.5rem;
+  filter: drop-shadow(0 6px 14px rgb(42 36 29 / 16%));
 }
 
 .login__form {
@@ -103,8 +156,9 @@ label {
 
 input {
   padding: 0.6rem;
-  border: 1px solid #cfcdc5;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font: inherit;
   font-size: 1rem;
   background: var(--color-surface);
   color: inherit;
@@ -113,11 +167,18 @@ input {
 button {
   padding: 0.6rem 1rem;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-accent);
   color: #fff;
+  font: inherit;
   font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--color-accent-dark);
 }
 
 button:disabled {
@@ -221,7 +282,7 @@ button:disabled {
   background: var(--color-surface);
   border-radius: var(--radius);
   padding: var(--space);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+  box-shadow: var(--shadow);
 }
 
 .calendar__header {
@@ -233,7 +294,8 @@ button:disabled {
 }
 
 .calendar__title {
-  font-size: 1.05rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
   margin: 0;
   text-transform: capitalize;
 }
@@ -244,7 +306,7 @@ button:disabled {
   font-size: 1.4rem;
   line-height: 1;
   padding: 0.2rem 0.7rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .calendar__nav:hover {
@@ -287,13 +349,13 @@ button:disabled {
   padding: 0.3rem 0.1rem;
   background: var(--color-bg);
   border: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--color-text);
   font-size: 0.9rem;
 }
 
 .calendar__day:hover {
-  border-color: #d8d6ce;
+  border-color: #d3bd90;
 }
 
 .calendar__day--outside {
@@ -369,7 +431,7 @@ button:disabled {
 }
 
 .event-list__item {
-  border-bottom: 1px solid #e2e0da;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .event-list__item:last-child {
@@ -393,7 +455,7 @@ button:disabled {
 }
 
 .event-list__summary:hover {
-  background: #f0efe9;
+  background: #f2e6cd;
 }
 
 .event-list__marker {
@@ -437,8 +499,9 @@ button:disabled {
 /* --- day panel ----------------------------------------------------------- */
 
 .day-panel__title {
+  font-family: var(--font-display);
   margin: 0 0 0.75rem;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   text-transform: capitalize;
 }
 
@@ -507,10 +570,18 @@ button:disabled {
   border: 1px solid var(--color-accent);
 }
 
+.button--quiet:hover:not(:disabled) {
+  background: #e6efe9;
+}
+
 .button--danger {
   background: transparent;
   color: var(--color-error);
   border: 1px solid var(--color-error);
+}
+
+.button--danger:hover:not(:disabled) {
+  background: #f4e5e2;
 }
 
 /* --- booking form -------------------------------------------------------- */
@@ -519,7 +590,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  border-top: 1px solid #e2e0da;
+  border-top: 1px solid var(--color-border);
   padding-top: 1rem;
 }
 
@@ -577,14 +648,14 @@ button:disabled {
   gap: 0.5rem;
   padding: 0.5rem;
   background: var(--color-bg);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 textarea,
 select {
   padding: 0.6rem;
-  border: 1px solid #cfcdc5;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   font: inherit;
   background: var(--color-surface);
   color: inherit;
@@ -667,7 +738,7 @@ select {
   align-items: center;
   gap: 0.35rem;
   padding: 0.25rem 0.6rem;
-  border: 1px solid #cfcdc5;
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   background: transparent;
   color: var(--color-muted);
@@ -697,11 +768,11 @@ select {
   border: 2px solid transparent;
   border-radius: var(--radius);
   color: var(--color-text);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+  box-shadow: var(--shadow);
 }
 
 .application-row:hover {
-  border-color: #d8d6ce;
+  border-color: #d3bd90;
 }
 
 .application-row--selected {
@@ -810,6 +881,7 @@ select {
 }
 
 .application__who {
+  font-family: var(--font-display);
   margin: 0;
   font-size: 1.15rem;
 }
@@ -842,7 +914,7 @@ select {
   display: flex;
   gap: 0.5rem;
   margin: 1rem 0 0.75rem;
-  border-bottom: 1px solid #e2e0da;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .tab {
@@ -930,7 +1002,7 @@ select {
   gap: 0.5rem;
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid #e2e0da;
+  border-top: 1px solid var(--color-border);
 }
 
 .comments h3 {
@@ -939,7 +1011,7 @@ select {
 }
 
 .comment {
-  border-left: 3px solid #e2e0da;
+  border-left: 3px solid var(--color-border);
   padding: 0.25rem 0 0.25rem 0.75rem;
 }
 
