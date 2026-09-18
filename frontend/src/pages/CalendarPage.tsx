@@ -123,7 +123,7 @@ export function CalendarPage() {
             aria-pressed={view === 'list'}
             onClick={() => setView('list')}
           >
-            Arrangementer
+            Liste
           </button>
         </nav>
 

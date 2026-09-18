@@ -16,7 +16,7 @@ export function Layout() {
         </div>
         <nav className="app-nav">
           <NavLink to="/" end>
-            Kalender
+            Beboerlokale
           </NavLink>
           {member?.is_business_committee && <NavLink to="/erhverv">Erhvervslejemål</NavLink>}
           {/* A plain anchor, not a NavLink: the Django admin is a separate app
