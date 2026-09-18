@@ -28,8 +28,8 @@ const PUBLIC_CLOSED_HINT =
 export function BookingForm({ day, policy, onCreated }: Props) {
   const { member } = useAuth()
   const [category, setCategory] = useState<EventCategory>('private')
-  const [startTime, setStartTime] = useState('18:00')
-  const [endTime, setEndTime] = useState('23:00')
+  const [startTime, setStartTime] = useState('15:00')
+  const [endTime, setEndTime] = useState('16:00')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [repeats, setRepeats] = useState(false)
