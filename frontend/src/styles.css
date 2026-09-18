@@ -9,7 +9,16 @@
    ground and as the pressed state under the fill, and --color-accent-soft is
    its palest tint, for quiet hovers and the "Ny" badge. The dark weight
    exists because #2c6fad reaches only 4.0:1 against --color-bg — enough for
-   a filled shape, short of AA for words. */
+   a filled shape, short of AA for words.
+
+   The type is two faces standing in for two retail ones the association has
+   no licence for: Roboto Serif at its narrowest width for Meursault Ultra
+   Condensed Bold, and Nunito for TT Rounds Neue. Roboto Serif is the pick
+   because Meursault descends from Cheltenham — an Arts-and-Crafts serif,
+   sturdy and low in contrast — so a condensed Didone would have had the
+   width right and the voice wrong. Swapping in the real files later is a
+   change to the @font-face source and nothing else, as long as the tokens
+   below stay the only place the families are named. */
 
 :root {
   --color-bg: #efe8da;
@@ -27,8 +36,8 @@
   --radius-sm: 8px;
   --space: 1rem;
   --shadow: 0 2px 12px rgb(42 36 29 / 10%);
-  --font-display: 'Bitter', Georgia, 'Times New Roman', serif;
-  font-family: 'Karla', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Roboto Serif', Georgia, 'Times New Roman', serif;
+  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
 }
 
@@ -46,9 +55,25 @@ body {
 h1,
 h2,
 h3 {
-  font-family: var(--font-display);
-  font-weight: 700;
   line-height: 1.25;
+}
+
+/* Everything set in the display face, in one rule. The ultra-condensed cut
+   is a font-stretch as much as a family — index.html asks Google for the 50%
+   width and nothing else — so a component that named only the family would
+   silently ask for a width that was never loaded. Naming the display face
+   here rather than per component is what stops that happening again. */
+h1,
+h2,
+h3,
+.app-header__brand,
+.calendar__title,
+.day-panel__title,
+.application__who {
+  font-family: var(--font-display);
+  font-stretch: 50%;
+  font-weight: 800;
+  letter-spacing: 0.01em;
 }
 
 a,
@@ -74,8 +99,6 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  font-family: var(--font-display);
-  font-weight: 700;
   font-size: 1.2rem;
   color: var(--color-accent-dark);
 }
@@ -303,7 +326,6 @@ button:disabled {
 }
 
 .calendar__title {
-  font-family: var(--font-display);
   font-size: 1.1rem;
   margin: 0;
   text-transform: capitalize;
@@ -508,7 +530,6 @@ button:disabled {
 /* --- day panel ----------------------------------------------------------- */
 
 .day-panel__title {
-  font-family: var(--font-display);
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
   text-transform: capitalize;
@@ -890,7 +911,6 @@ select {
 }
 
 .application__who {
-  font-family: var(--font-display);
   margin: 0;
   font-size: 1.15rem;
 }
