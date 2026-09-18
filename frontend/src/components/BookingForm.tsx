@@ -136,10 +136,11 @@ export function BookingForm({ day, policy, onCreated }: Props) {
           />
           Privat
         </label>
-        {/* The title sits on the label, not the disabled input: a disabled
-            control does not reliably fire hover events, so it would never
-            show its tooltip. */}
-        <label title={publicClosed ? PUBLIC_CLOSED_HINT : undefined}>
+        {/* A custom tooltip, not the native `title`: that has a browser-fixed
+            delay and an unstyleable, content-wide box. It sits on the label
+            rather than the disabled input, since a disabled control does not
+            reliably fire hover events. */}
+        <label className={publicClosed ? 'tooltip' : undefined}>
           <input
             type="radio"
             name="category"
@@ -148,6 +149,7 @@ export function BookingForm({ day, policy, onCreated }: Props) {
             onChange={() => setCategory('public')}
           />
           Fælles arrangement
+          {publicClosed && <span className="tooltip__bubble">{PUBLIC_CLOSED_HINT}</span>}
         </label>
       </fieldset>
 
