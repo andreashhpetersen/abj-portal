@@ -1,15 +1,24 @@
 /* Mobile-first styling, warmed up: the palette is the association's own —
-   limewashed courtyard render, the patina green already used for the accent,
-   and a brick red pulled from the building's own brickwork — rather than a
-   neutral system default. */
+   limewashed courtyard render, a matte blue for the accent, and a brick red
+   pulled from the building's own brickwork — rather than a neutral system
+   default.
+
+   The accent is one hue in three weights, and the split is by job rather
+   than by taste: --color-accent is the fill (buttons, dots, the selected
+   day's border), --color-accent-dark is the same blue as *type* on a light
+   ground and as the pressed state under the fill, and --color-accent-soft is
+   its palest tint, for quiet hovers and the "Ny" badge. The dark weight
+   exists because #2c6fad reaches only 4.0:1 against --color-bg — enough for
+   a filled shape, short of AA for words. */
 
 :root {
   --color-bg: #efe8da;
   --color-surface: #fffcf6;
   --color-text: #2a241d;
   --color-muted: #6b6153;
-  --color-accent: #2f5d50;
-  --color-accent-dark: #24463c;
+  --color-accent: #2c6fad;
+  --color-accent-dark: #21537f;
+  --color-accent-soft: #e5edf5;
   --color-brick: #ab4a28;
   --color-brick-dark: #8c3c1f;
   --color-error: #a52a2a;
@@ -44,11 +53,11 @@ h3 {
 
 a,
 a:visited {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
 }
 
 a:hover {
-  color: var(--color-accent-dark);
+  color: var(--color-accent);
 }
 
 .app-header {
@@ -91,7 +100,7 @@ a:hover {
 }
 
 .app-nav a.active {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
   border-bottom-color: var(--color-accent);
 }
 
@@ -365,7 +374,7 @@ button:disabled {
 
 .calendar__day--today .calendar__date {
   font-weight: 700;
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
 }
 
 .calendar__day--selected {
@@ -459,7 +468,7 @@ button:disabled {
 }
 
 .event-list__marker {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
   font-size: 0.8rem;
 }
 
@@ -566,12 +575,12 @@ button:disabled {
 
 .button--quiet {
   background: transparent;
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
   border: 1px solid var(--color-accent);
 }
 
 .button--quiet:hover:not(:disabled) {
-  background: #e6efe9;
+  background: var(--color-accent-soft);
 }
 
 .button--danger {
@@ -822,8 +831,8 @@ select {
 }
 
 .badge--new {
-  background: #e6efe9;
-  color: #2f5d50;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-dark);
 }
 
 .badge--in_progress {
@@ -832,8 +841,8 @@ select {
 }
 
 .badge--saved {
-  background: #e4ecf4;
-  color: #2f4f6d;
+  background: #eae5f1;
+  color: #574570;
 }
 
 .badge--rejected {
@@ -927,7 +936,7 @@ select {
 }
 
 .tab--on {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
   border-bottom-color: var(--color-accent);
 }
 
@@ -985,7 +994,7 @@ select {
 .contract__ready {
   margin: 0;
   font-size: 0.85rem;
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
 }
 
 .contract__actions {
