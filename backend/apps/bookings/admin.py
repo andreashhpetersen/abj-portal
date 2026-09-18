@@ -77,6 +77,7 @@ class BookingSettingsAdmin(admin.ModelAdmin):
         "private_booking_min_notice_days",
         "private_booking_max_horizon_days",
         "private_booking_weekdays",
+        "public_bookings_open",
     ]
 
     def has_add_permission(self, request):

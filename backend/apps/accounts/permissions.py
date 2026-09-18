@@ -14,6 +14,16 @@ class IsBusinessCommittee(permissions.BasePermission):
         return bool(user and user.is_authenticated and user.is_business_committee)
 
 
+class IsEventOrganizer(permissions.BasePermission):
+    """Restricts a view to the beboerlokalegruppe (and superusers)."""
+
+    message = "Kræver medlemskab af beboerlokalegruppen."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and user.is_event_organizer)
+
+
 class IsOwnerOrAdmin(permissions.BasePermission):
     """Object-level write access for the object's creator, or any admin.
 

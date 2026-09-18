@@ -38,14 +38,14 @@ export function daysFromToday(day: string): number {
 }
 
 /**
- * Every half hour of the day as "HH:mm", 00:00 to 23:30.
+ * Every half hour of the day as "HH:mm", 08:00 to 23:00.
  *
  * The booking form picks from these rather than using <input type="time">,
  * which renders as a 12-hour AM/PM control whenever the *browser's* locale is
  * English — the document's lang attribute does not override that.
  */
-export const TIME_SLOTS = Array.from({ length: 48 }, (_, index) => {
-  const hours = String(Math.floor(index / 2)).padStart(2, '0')
+export const TIME_SLOTS = Array.from({ length: 31 }, (_, index) => {
+  const hours = String(8 + Math.floor(index / 2)).padStart(2, '0')
   return `${hours}:${index % 2 === 0 ? '00' : '30'}`
 })
 

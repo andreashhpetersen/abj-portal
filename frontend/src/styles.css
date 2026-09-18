@@ -1,15 +1,33 @@
 /* Mobile-first styling, warmed up: the palette is the association's own —
-   limewashed courtyard render, the patina green already used for the accent,
-   and a brick red pulled from the building's own brickwork — rather than a
-   neutral system default. */
+   limewashed courtyard render, a matte blue for the accent, and a brick red
+   pulled from the building's own brickwork — rather than a neutral system
+   default.
+
+   The accent is one hue in three weights, and the split is by job rather
+   than by taste: --color-accent is the fill (buttons, dots, the selected
+   day's border), --color-accent-dark is the same blue as *type* on a light
+   ground and as the pressed state under the fill, and --color-accent-soft is
+   its palest tint, for quiet hovers and the "Ny" badge. The dark weight
+   exists because #2c6fad reaches only 4.0:1 against --color-bg — enough for
+   a filled shape, short of AA for words.
+
+   The type is two faces standing in for two retail ones the association has
+   no licence for: Roboto Serif at its narrowest width for Meursault Ultra
+   Condensed Bold, and Nunito for TT Rounds Neue. Roboto Serif is the pick
+   because Meursault descends from Cheltenham — an Arts-and-Crafts serif,
+   sturdy and low in contrast — so a condensed Didone would have had the
+   width right and the voice wrong. Swapping in the real files later is a
+   change to the @font-face source and nothing else, as long as the tokens
+   below stay the only place the families are named. */
 
 :root {
   --color-bg: #efe8da;
   --color-surface: #fffcf6;
   --color-text: #2a241d;
   --color-muted: #6b6153;
-  --color-accent: #2f5d50;
-  --color-accent-dark: #24463c;
+  --color-accent: #2c6fad;
+  --color-accent-dark: #21537f;
+  --color-accent-soft: #e5edf5;
   --color-brick: #ab4a28;
   --color-brick-dark: #8c3c1f;
   --color-error: #a52a2a;
@@ -18,8 +36,8 @@
   --radius-sm: 8px;
   --space: 1rem;
   --shadow: 0 2px 12px rgb(42 36 29 / 10%);
-  --font-display: 'Bitter', Georgia, 'Times New Roman', serif;
-  font-family: 'Karla', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Roboto Serif', Georgia, 'Times New Roman', serif;
+  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
 }
 
@@ -37,18 +55,34 @@ body {
 h1,
 h2,
 h3 {
-  font-family: var(--font-display);
-  font-weight: 700;
   line-height: 1.25;
+}
+
+/* Everything set in the display face, in one rule. The ultra-condensed cut
+   is a font-stretch as much as a family — index.html asks Google for the 50%
+   width and nothing else — so a component that named only the family would
+   silently ask for a width that was never loaded. Naming the display face
+   here rather than per component is what stops that happening again. */
+h1,
+h2,
+h3,
+.app-header__brand,
+.calendar__title,
+.day-panel__title,
+.application__who {
+  font-family: var(--font-display);
+  font-stretch: 50%;
+  font-weight: 800;
+  letter-spacing: 0.01em;
 }
 
 a,
 a:visited {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
 }
 
 a:hover {
-  color: var(--color-accent-dark);
+  color: var(--color-accent);
 }
 
 .app-header {
@@ -65,8 +99,6 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  font-family: var(--font-display);
-  font-weight: 700;
   font-size: 1.2rem;
   color: var(--color-accent-dark);
 }
@@ -91,7 +123,7 @@ a:hover {
 }
 
 .app-nav a.active {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
   border-bottom-color: var(--color-accent);
 }
 
@@ -177,6 +209,10 @@ button {
   transition: background-color 0.15s ease;
 }
 
+/* This reaches every button, including the ones that reset the filled style
+   at rest — `:not(:disabled)` makes it one specificity step stronger than a
+   plain `.class:hover`. See "hovering a quiet button" at the end of the
+   file, which is where that is dealt with. */
 button:hover:not(:disabled) {
   background: var(--color-accent-dark);
 }
@@ -294,7 +330,6 @@ button:disabled {
 }
 
 .calendar__title {
-  font-family: var(--font-display);
   font-size: 1.1rem;
   margin: 0;
   text-transform: capitalize;
@@ -365,7 +400,7 @@ button:disabled {
 
 .calendar__day--today .calendar__date {
   font-weight: 700;
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
 }
 
 .calendar__day--selected {
@@ -459,7 +494,7 @@ button:disabled {
 }
 
 .event-list__marker {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
   font-size: 0.8rem;
 }
 
@@ -499,7 +534,6 @@ button:disabled {
 /* --- day panel ----------------------------------------------------------- */
 
 .day-panel__title {
-  font-family: var(--font-display);
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
   text-transform: capitalize;
@@ -566,12 +600,12 @@ button:disabled {
 
 .button--quiet {
   background: transparent;
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
   border: 1px solid var(--color-accent);
 }
 
 .button--quiet:hover:not(:disabled) {
-  background: #e6efe9;
+  background: var(--color-accent-soft);
 }
 
 .button--danger {
@@ -670,6 +704,35 @@ select {
 /* A hint that explains why the form cannot be submitted as it stands. */
 .hint--blocking {
   color: var(--color-error);
+}
+
+/* A narrow, instant tooltip — unlike the native `title`, which has a
+   browser-fixed delay and sizes its box to the content on one line. No
+   transition, so :hover shows and hides it immediately. */
+.tooltip {
+  position: relative;
+}
+
+.tooltip__bubble {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 10;
+  width: 180px;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+}
+
+.tooltip:hover .tooltip__bubble {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* --- shop rentals (erhvervslejemål) -------------------------------------- */
@@ -822,8 +885,8 @@ select {
 }
 
 .badge--new {
-  background: #e6efe9;
-  color: #2f5d50;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-dark);
 }
 
 .badge--in_progress {
@@ -832,8 +895,8 @@ select {
 }
 
 .badge--saved {
-  background: #e4ecf4;
-  color: #2f4f6d;
+  background: #eae5f1;
+  color: #574570;
 }
 
 .badge--rejected {
@@ -881,7 +944,6 @@ select {
 }
 
 .application__who {
-  font-family: var(--font-display);
   margin: 0;
   font-size: 1.15rem;
 }
@@ -927,7 +989,7 @@ select {
 }
 
 .tab--on {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
   border-bottom-color: var(--color-accent);
 }
 
@@ -985,7 +1047,7 @@ select {
 .contract__ready {
   margin: 0;
   font-size: 0.85rem;
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
 }
 
 .contract__actions {
@@ -1033,4 +1095,66 @@ select {
   background: transparent;
   color: var(--color-error);
   font-size: 0.75rem;
+}
+
+/* --- hovering a quiet button ---------------------------------------------
+
+   A button that is not filled — a day in the grid, a tab, a row in the event
+   list — resets `background` and `color` at rest. On hover it could not:
+   `button:hover:not(:disabled)` is 0-2-1 and a plain `.thing:hover` is
+   0-2-0, so the accent came back and the text stayed where it was. Dark on
+   dark, and today's date, being accent-coloured itself, disappeared
+   altogether.
+
+   The fill stays — it is the same feedback the filled buttons give — and the
+   text is brought up to meet it. Every descendant that sets a colour of its
+   own has to be named, because the fill lands on the button and a colour
+   that was set explicitly does not inherit. Text that is muted at rest stays
+   muted relative to its neighbours rather than turning the same white as the
+   title.
+
+   Anything written `:hover:not(:disabled)` outranks the generic rule.
+   `.button--quiet` was always written that way, which is why it was the one
+   quiet button that never broke. */
+
+.calendar__day:hover:not(:disabled),
+.calendar__day--outside:hover:not(:disabled),
+.calendar__nav:hover:not(:disabled),
+.event-list__summary:hover:not(:disabled),
+.application-row:hover:not(:disabled),
+.tab:hover:not(:disabled),
+.chip:hover:not(:disabled) {
+  color: #fff;
+}
+
+.calendar__day:hover .calendar__date,
+.event-list__summary:hover .event-list__marker {
+  color: #fff;
+}
+
+.event-list__summary:hover .event-list__when,
+.application-row:hover .application-row__summary,
+.application-row:hover .application-row__meta {
+  color: rgb(255 255 255 / 78%);
+}
+
+/* The public dot is the accent, which against the accent's own dark weight
+   is barely there. The private one is brick and stays legible as it is, so
+   the two remain tellable apart. */
+.calendar__day:hover .dot--public {
+  background: #fff;
+}
+
+/* A star and a delete link are too small to carry a fill — filling them puts
+   a blue tile behind a single glyph. They answer the pointer in their own
+   colour instead. */
+.star:hover:not(:disabled) {
+  background: transparent;
+  color: #c9962b;
+}
+
+.comment__delete:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-error);
+  text-decoration: underline;
 }

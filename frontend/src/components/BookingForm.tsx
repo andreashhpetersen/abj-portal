@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import type { BookingPolicy, EventCategory, Frequency } from '../api/bookings'
+import type { BookingPolicy, EventCategory, Frequency, OrganizerCandidate } from '../api/bookings'
 import { bookings } from '../api/bookings'
 import { fieldErrors } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -21,11 +21,15 @@ const FREQUENCY_LABELS: Record<Frequency, string> = {
   monthly: 'Hver måned',
 }
 
+const PUBLIC_CLOSED_HINT =
+  'Fælles arrangementer kan i øjeblikket kun oprettes af beboerlokalegruppen. ' +
+  'Har du en idé til et arrangement, så tøv ikke med at kontakte os på beboerlokale@ab-jaeger.dk.'
+
 export function BookingForm({ day, policy, onCreated }: Props) {
   const { member } = useAuth()
   const [category, setCategory] = useState<EventCategory>('private')
-  const [startTime, setStartTime] = useState('18:00')
-  const [endTime, setEndTime] = useState('23:00')
+  const [startTime, setStartTime] = useState('15:00')
+  const [endTime, setEndTime] = useState('16:00')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [repeats, setRepeats] = useState(false)
@@ -34,15 +38,37 @@ export function BookingForm({ day, policy, onCreated }: Props) {
   const [until, setUntil] = useState(day)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [organizers, setOrganizers] = useState<OrganizerCandidate[]>([])
+  const [organizerId, setOrganizerId] = useState('')
 
   // Admins may book privately whatever the policy says, so the form follows the
   // same rules the server enforces rather than guessing.
   const exempt = member?.is_staff ?? false
   const privateClosed = policy !== null && !policy.private_bookings_enabled && !exempt
+  // The beboerlokalegruppe and admins may always book a public event, and may
+  // book one in someone else's name — see `BookingPolicy.public_bookings_open`.
+  const privileged = (member?.is_staff ?? false) || (member?.is_event_organizer ?? false)
+  const publicClosed = policy !== null && !policy.public_bookings_open && !privileged
   const isPublic = category === 'public'
   const privateBlockedReason = privateBookingProblem(day, policy, exempt)
   // A booking that ends earlier than it starts runs past midnight.
   const endsNextDay = endTime <= startTime
+
+  useEffect(() => {
+    if (!privileged) return
+    let cancelled = false
+    bookings
+      .organizers()
+      .then((list) => {
+        if (!cancelled) setOrganizers(list)
+      })
+      .catch(() => {
+        // The picker just stays empty — booking in your own name still works.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [privileged])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -51,6 +77,9 @@ export function BookingForm({ day, policy, onCreated }: Props) {
 
     const start = combineLocal(day, startTime)
     const end = combineLocal(day, endTime, endsNextDay ? 1 : 0)
+    // Only a privileged booker's choice is ever honoured — the server ignores
+    // this otherwise — and an empty picker means "myself".
+    const organizer = privileged && isPublic && organizerId ? Number(organizerId) : undefined
 
     try {
       if (isPublic && repeats) {
@@ -62,6 +91,7 @@ export function BookingForm({ day, policy, onCreated }: Props) {
           until,
           start,
           end,
+          organizer_id: organizer,
         })
       } else {
         await bookings.create({
@@ -70,11 +100,13 @@ export function BookingForm({ day, policy, onCreated }: Props) {
           description: isPublic ? description : '',
           start,
           end,
+          organizer_id: organizer,
         })
       }
       setTitle('')
       setDescription('')
       setRepeats(false)
+      setOrganizerId('')
       await onCreated()
     } catch (caught) {
       const reported = fieldErrors(caught)
@@ -104,14 +136,20 @@ export function BookingForm({ day, policy, onCreated }: Props) {
           />
           Privat
         </label>
-        <label>
+        {/* A custom tooltip, not the native `title`: that has a browser-fixed
+            delay and an unstyleable, content-wide box. It sits on the label
+            rather than the disabled input, since a disabled control does not
+            reliably fire hover events. */}
+        <label className={publicClosed ? 'tooltip' : undefined}>
           <input
             type="radio"
             name="category"
             checked={isPublic}
+            disabled={publicClosed}
             onChange={() => setCategory('public')}
           />
           Fælles arrangement
+          {publicClosed && <span className="tooltip__bubble">{PUBLIC_CLOSED_HINT}</span>}
         </label>
       </fieldset>
 
@@ -152,6 +190,25 @@ export function BookingForm({ day, policy, onCreated }: Props) {
       {endsNextDay && <p className="hint">Bookingen slutter dagen efter.</p>}
       {errors.start && <p className="error">{errors.start}</p>}
       {errors.end && <p className="error">{errors.end}</p>}
+
+      {isPublic && privileged && (
+        <>
+          <label>
+            Arrangør
+            <select value={organizerId} onChange={(changed) => setOrganizerId(changed.target.value)}>
+              <option value="">Mig selv</option>
+              {organizers
+                .filter((candidate) => candidate.id !== member?.id)
+                .map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          {errors.organizer_id && <p className="error">{errors.organizer_id}</p>}
+        </>
+      )}
 
       {isPublic && (
         <>
@@ -234,7 +291,11 @@ export function BookingForm({ day, policy, onCreated }: Props) {
 
       <button
         type="submit"
-        disabled={submitting || (!isPublic && (privateClosed || privateBlockedReason !== null))}
+        disabled={
+          submitting ||
+          (!isPublic && (privateClosed || privateBlockedReason !== null)) ||
+          (isPublic && publicClosed)
+        }
       >
         {submitting ? 'Booker…' : 'Book'}
       </button>
