@@ -123,7 +123,7 @@ class EventSerializer(serializers.ModelSerializer):
 
         if organizer != user and not privileged:
             raise serializers.ValidationError(
-                {"organizer_id": "Kun arrangementsudvalget kan booke på en andens vegne."}
+                {"organizer_id": "Kun beboerlokalegruppen kan booke på en andens vegne."}
             )
         if (
             attrs.get("category") == EventCategory.PUBLIC
@@ -133,8 +133,7 @@ class EventSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {
                     "category": (
-                        "Fælles arrangementer kan i øjeblikket kun oprettes af "
-                        "arrangementsudvalget."
+                        "Fælles arrangementer kan i øjeblikket kun oprettes af beboerlokalegruppen."
                     )
                 }
             )
@@ -192,14 +191,14 @@ class EventSeriesSerializer(serializers.ModelSerializer):
         privileged = user.is_staff or user.is_event_organizer
         if organizer != user and not privileged:
             raise serializers.ValidationError(
-                {"organizer_id": "Kun arrangementsudvalget kan booke på en andens vegne."}
+                {"organizer_id": "Kun beboerlokalegruppen kan booke på en andens vegne."}
             )
         if not privileged and not BookingSettings.load().public_bookings_open:
             raise serializers.ValidationError(
                 {
                     "detail": (
                         "Gentagne arrangementer kan i øjeblikket kun oprettes af "
-                        "arrangementsudvalget."
+                        "beboerlokalegruppen."
                     )
                 }
             )

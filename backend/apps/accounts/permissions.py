@@ -15,9 +15,9 @@ class IsBusinessCommittee(permissions.BasePermission):
 
 
 class IsEventOrganizer(permissions.BasePermission):
-    """Restricts a view to the arrangementsudvalg (and superusers)."""
+    """Restricts a view to the beboerlokalegruppe (and superusers)."""
 
-    message = "Kræver medlemskab af arrangementsudvalget."
+    message = "Kræver medlemskab af beboerlokalegruppen."
 
     def has_permission(self, request, view):
         user = request.user

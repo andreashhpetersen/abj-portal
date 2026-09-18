@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.accounts.models import ARRANGEMENT_ORGANIZERS_GROUP
+from apps.accounts.models import BEBOERLOKALEGRUPPE_GROUP
 from apps.bookings.models import BookingSettings, Event, EventCategory, EventSeries, Frequency
 
 User = get_user_model()
@@ -39,7 +39,7 @@ def admin_user(db):
 
 @pytest.fixture
 def event_organizer(db):
-    group, _created = Group.objects.get_or_create(name=ARRANGEMENT_ORGANIZERS_GROUP)
+    group, _created = Group.objects.get_or_create(name=BEBOERLOKALEGRUPPE_GROUP)
     user = User.objects.create_user(email="arrangement@example.dk", password="hemmeligt123")
     user.groups.add(group)
     return user

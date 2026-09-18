@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='bookingsettings',
             name='public_bookings_open',
-            field=models.BooleanField(default=False, help_text="When off, only the arrangementsudvalg and admins may create a public booking. Booking one in someone else's name stays restricted to them even once this is turned on.", verbose_name='public bookings open to everyone'),
+            field=models.BooleanField(default=False, help_text="When off, only the beboerlokalegruppe and admins may create a public booking. Booking one in someone else's name stays restricted to them even once this is turned on.", verbose_name='public bookings open to everyone'),
         ),
     ]

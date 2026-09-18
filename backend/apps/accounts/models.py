@@ -38,9 +38,9 @@ ERHVERVSUDVALG_GROUP = "erhvervsudvalg"
 
 #: Members of this Django group may create a public booking while
 #: `BookingSettings.public_bookings_open` is off, and book one in someone
-#: else's name. Danish for "events committee", same convention as
-#: ERHVERVSUDVALG_GROUP.
-ARRANGEMENT_ORGANIZERS_GROUP = "arrangementsudvalg"
+#: else's name. Danish for "the beboerlokale's group" — a group rather than a
+#: committee like ERHVERVSUDVALG_GROUP, but the same naming convention.
+BEBOERLOKALEGRUPPE_GROUP = "beboerlokalegruppe"
 
 #: A *unit* number — `Bolignr.` in INNA's register. It identifies a flat, a
 #: shop or a storage room, and unlike everything else about a residency it does
@@ -166,7 +166,7 @@ class User(AbstractUser):
         """Whether this user may create a public booking while it is
         restricted, and book one in someone else's name — see
         `apps.bookings.models.BookingSettings.public_bookings_open`."""
-        return self.is_superuser or self.groups.filter(name=ARRANGEMENT_ORGANIZERS_GROUP).exists()
+        return self.is_superuser or self.groups.filter(name=BEBOERLOKALEGRUPPE_GROUP).exists()
 
 
 class Building(models.Model):

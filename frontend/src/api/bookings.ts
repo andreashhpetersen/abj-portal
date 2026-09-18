@@ -41,7 +41,7 @@ export interface BookingPolicy {
   private_booking_max_horizon_days: number
   /** Weekdays a private booking may start on. 0 = Monday. */
   private_booking_weekdays: number[]
-  /** When false, only the beboerlokaleudvalg and admins may create a public
+  /** When false, only the beboerlokalegruppe and admins may create a public
    *  booking. Booking one in someone else's name stays restricted to them
    *  either way. */
   public_bookings_open: boolean

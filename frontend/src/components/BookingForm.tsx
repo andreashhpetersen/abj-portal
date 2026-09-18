@@ -41,7 +41,7 @@ export function BookingForm({ day, policy, onCreated }: Props) {
   // same rules the server enforces rather than guessing.
   const exempt = member?.is_staff ?? false
   const privateClosed = policy !== null && !policy.private_bookings_enabled && !exempt
-  // The beboerlokaleudvalg and admins may always book a public event, and may
+  // The beboerlokalegruppe and admins may always book a public event, and may
   // book one in someone else's name — see `BookingPolicy.public_bookings_open`.
   const privileged = (member?.is_staff ?? false) || (member?.is_event_organizer ?? false)
   const publicClosed = policy !== null && !policy.public_bookings_open && !privileged
@@ -156,7 +156,7 @@ export function BookingForm({ day, policy, onCreated }: Props) {
       )}
       {publicClosed && (
         <p className="hint">
-          Fælles arrangementer kan i øjeblikket kun oprettes af beboerlokaleudvalget.
+          Fælles arrangementer kan i øjeblikket kun oprettes af beboerlokalegruppen.
         </p>
       )}
       {errors.category && <p className="error">{errors.category}</p>}

@@ -66,7 +66,7 @@ class BookingSettings(models.Model):
     `EventSerializer.validate()`, not `Event.clean()`. The model only ever sees
     the organizer a booking ends up with, never who submitted the request, and
     the rule needs both: a resident may still be handed the room by the
-    arrangementsudvalg while this is off.
+    beboerlokalegruppe while this is off.
     """
 
     private_bookings_enabled = models.BooleanField(
@@ -93,7 +93,7 @@ class BookingSettings(models.Model):
         _("public bookings open to everyone"),
         default=False,
         help_text=_(
-            "When off, only the arrangementsudvalg and admins may create a public "
+            "When off, only the beboerlokalegruppe and admins may create a public "
             "booking. Booking one in someone else's name stays restricted to them "
             "even once this is turned on."
         ),
