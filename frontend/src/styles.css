@@ -100,7 +100,6 @@ a:hover {
   align-items: center;
   gap: 0.6rem;
   font-size: 1.2rem;
-  color: var(--color-accent-dark);
 }
 
 .app-header__logo {
