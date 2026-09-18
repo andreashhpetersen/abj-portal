@@ -36,6 +36,12 @@ from django.utils.translation import gettext_lazy as _
 #: association refers to itself in its own bylaws.
 ERHVERVSUDVALG_GROUP = "erhvervsudvalg"
 
+#: Members of this Django group may create a public booking while
+#: `BookingSettings.public_bookings_open` is off, and book one in someone
+#: else's name. Danish for "events committee", same convention as
+#: ERHVERVSUDVALG_GROUP.
+ARRANGEMENT_ORGANIZERS_GROUP = "arrangementsudvalg"
+
 #: A *unit* number — `Bolignr.` in INNA's register. It identifies a flat, a
 #: shop or a storage room, and unlike everything else about a residency it does
 #: not change: people move, tenancies are renumbered, the unit stays. That is
@@ -154,6 +160,13 @@ class User(AbstractUser):
     def is_business_committee(self):
         """Whether this user may see shop-rental applications."""
         return self.is_superuser or self.groups.filter(name=ERHVERVSUDVALG_GROUP).exists()
+
+    @property
+    def is_event_organizer(self):
+        """Whether this user may create a public booking while it is
+        restricted, and book one in someone else's name — see
+        `apps.bookings.models.BookingSettings.public_bookings_open`."""
+        return self.is_superuser or self.groups.filter(name=ARRANGEMENT_ORGANIZERS_GROUP).exists()
 
 
 class Building(models.Model):

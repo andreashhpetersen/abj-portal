@@ -3,7 +3,10 @@ The booking API.
 
 Who may do what:
 
-* any logged-in user may see the calendar and book the room
+* any logged-in user may see the calendar and book the room privately
+* a public booking, and booking one in someone else's name, are further
+  gated by `EventSerializer`/`EventSeriesSerializer` — see
+  `BookingSettings.public_bookings_open`
 * the person who booked, and admins, may edit or cancel a booking
 * only admins may delete one outright — everyone else cancels, which keeps the
   record
@@ -12,6 +15,7 @@ Who may do what:
 
 import datetime as dt
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Exists, OuterRef
 from django.utils import timezone
@@ -19,10 +23,11 @@ from django.utils.dateparse import parse_date
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.generics import RetrieveUpdateAPIView
+from rest_framework.generics import ListAPIView, RetrieveUpdateAPIView
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsOwnerOrAdmin
+from apps.accounts.permissions import IsEventOrganizer, IsOwnerOrAdmin
+from apps.accounts.serializers import ContactSerializer
 
 from .models import BookingSettings, Event, EventAttendance, EventSeries
 from .serializers import (
@@ -94,10 +99,6 @@ class EventViewSet(viewsets.ModelViewSet):
         return timezone.make_aware(
             dt.datetime.combine(day, dt.time.min), timezone.get_current_timezone()
         )
-
-    def perform_create(self, serializer):
-        # Never trust a client-supplied owner: you book in your own name.
-        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
@@ -175,3 +176,24 @@ class BookingSettingsView(RetrieveUpdateAPIView):
 
     def get_object(self):
         return BookingSettings.load()
+
+
+class EventOrganizerCandidatesView(ListAPIView):
+    """Who a privileged booker may name as the organizer of a public event.
+
+    Gated on `IsEventOrganizer` itself, not merely `IsAuthenticated`: this is a
+    wider list than shoprentals' committee-members dropdown — anyone active,
+    resident or not, since the organizer is simply who ends up able to edit and
+    is shown as the contact, not a committee role.
+    """
+
+    serializer_class = ContactSerializer
+    permission_classes = [permissions.IsAuthenticated, IsEventOrganizer]
+    pagination_class = None
+
+    def get_queryset(self):
+        return (
+            get_user_model()
+            .objects.filter(is_active=True)
+            .order_by("first_name", "last_name", "email")
+        )

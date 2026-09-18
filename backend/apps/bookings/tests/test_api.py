@@ -9,10 +9,12 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.accounts.models import ARRANGEMENT_ORGANIZERS_GROUP
 from apps.bookings.models import BookingSettings, Event, EventCategory, EventSeries, Frequency
 
 User = get_user_model()
@@ -33,6 +35,14 @@ def admin_user(db):
     return User.objects.create_user(
         email="formand@example.dk", password="hemmeligt123", is_staff=True
     )
+
+
+@pytest.fixture
+def event_organizer(db):
+    group, _created = Group.objects.get_or_create(name=ARRANGEMENT_ORGANIZERS_GROUP)
+    user = User.objects.create_user(email="arrangement@example.dk", password="hemmeligt123")
+    user.groups.add(group)
+    return user
 
 
 @pytest.fixture
@@ -159,8 +169,8 @@ def test_an_admin_may_book_at_either_extreme(admin_user):
     )
 
 
-def test_a_public_event_without_a_title_is_rejected(resident):
-    response = as_user(resident).post(
+def test_a_public_event_without_a_title_is_rejected(admin_user):
+    response = as_user(admin_user).post(
         reverse("bookings:event-list"),
         booking_payload(category=EventCategory.PUBLIC),
         format="json",
@@ -168,6 +178,113 @@ def test_a_public_event_without_a_title_is_rejected(resident):
 
     assert response.status_code == 400
     assert "title" in response.json()
+
+
+# --- restricting who may organize a public event ----------------------------
+
+
+def test_a_resident_cannot_create_a_public_event_while_restricted(resident):
+    response = as_user(resident).post(
+        reverse("bookings:event-list"),
+        booking_payload(category=EventCategory.PUBLIC, title="Fastelavn"),
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "category" in response.json()
+    assert Event.objects.count() == 0
+
+
+def test_an_event_organizer_can_create_a_public_event_while_restricted(event_organizer):
+    response = as_user(event_organizer).post(
+        reverse("bookings:event-list"),
+        booking_payload(category=EventCategory.PUBLIC, title="Fastelavn"),
+        format="json",
+    )
+
+    assert response.status_code == 201
+
+
+def test_an_admin_can_create_a_public_event_while_restricted(admin_user):
+    response = as_user(admin_user).post(
+        reverse("bookings:event-list"),
+        booking_payload(category=EventCategory.PUBLIC, title="Fastelavn"),
+        format="json",
+    )
+
+    assert response.status_code == 201
+
+
+def test_a_resident_can_create_a_public_event_once_opened(resident):
+    settings = BookingSettings.load()
+    settings.public_bookings_open = True
+    settings.save()
+
+    response = as_user(resident).post(
+        reverse("bookings:event-list"),
+        booking_payload(category=EventCategory.PUBLIC, title="Fastelavn"),
+        format="json",
+    )
+
+    assert response.status_code == 201
+
+
+def test_a_resident_cannot_book_on_someone_elses_behalf(resident, neighbour):
+    response = as_user(resident).post(
+        reverse("bookings:event-list"),
+        booking_payload(organizer_id=neighbour.pk),
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "organizer_id" in response.json()
+
+
+def test_an_event_organizer_can_book_on_someone_elses_behalf(event_organizer, neighbour):
+    response = as_user(event_organizer).post(
+        reverse("bookings:event-list"),
+        booking_payload(organizer_id=neighbour.pk),
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert Event.objects.get().created_by == neighbour
+
+
+def test_the_named_organizer_can_then_edit_the_booking(event_organizer, neighbour):
+    as_user(event_organizer).post(
+        reverse("bookings:event-list"),
+        booking_payload(organizer_id=neighbour.pk),
+        format="json",
+    )
+
+    [event] = as_user(neighbour).get(reverse("bookings:event-list")).json()
+    assert event["can_edit"] is True
+
+    # The committee member who made the booking is not the organizer, so
+    # naming someone else hands the booking off rather than merely delegating.
+    [same_event] = as_user(event_organizer).get(reverse("bookings:event-list")).json()
+    assert same_event["can_edit"] is False
+
+
+def test_the_organizer_cannot_be_reassigned_after_creation(event_organizer, neighbour):
+    created = as_user(event_organizer).post(
+        reverse("bookings:event-list"), booking_payload(), format="json"
+    )
+
+    response = as_user(event_organizer).patch(
+        reverse("bookings:event-detail", args=[created.json()["id"]]),
+        {"organizer_id": neighbour.pk},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "organizer_id" in response.json()
+
+
+def test_only_privileged_users_may_list_organizer_candidates(resident, event_organizer):
+    assert as_user(resident).get(reverse("bookings:organizers")).status_code == 403
+    assert as_user(event_organizer).get(reverse("bookings:organizers")).status_code == 200
 
 
 # --- editing, cancelling, deleting ------------------------------------------
@@ -423,9 +540,50 @@ def test_private_bookings_take_no_attendance(resident, neighbour):
 # --- recurring events -------------------------------------------------------
 
 
-def test_creating_a_series_returns_its_occurrences(resident):
+def test_a_resident_cannot_create_a_series_while_restricted(resident):
     start = timezone.now() + timedelta(days=2)
     response = as_user(resident).post(
+        reverse("bookings:series-list"),
+        {
+            "title": "Brætspilscafé",
+            "frequency": Frequency.WEEKLY,
+            "interval": 1,
+            "until": (timezone.localtime(start) + timedelta(days=14)).date().isoformat(),
+            "start": start.isoformat(),
+            "end": (start + timedelta(hours=3)).isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert EventSeries.objects.count() == 0
+
+
+def test_an_event_organizer_can_name_a_series_organizer(event_organizer, neighbour):
+    start = timezone.now() + timedelta(days=2)
+    response = as_user(event_organizer).post(
+        reverse("bookings:series-list"),
+        {
+            "title": "Brætspilscafé",
+            "frequency": Frequency.WEEKLY,
+            "interval": 1,
+            "until": (timezone.localtime(start) + timedelta(days=14)).date().isoformat(),
+            "start": start.isoformat(),
+            "end": (start + timedelta(hours=3)).isoformat(),
+            "organizer_id": neighbour.pk,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    series = EventSeries.objects.get()
+    assert series.created_by == neighbour
+    assert all(occurrence.created_by == neighbour for occurrence in series.occurrences.all())
+
+
+def test_creating_a_series_returns_its_occurrences(admin_user):
+    start = timezone.now() + timedelta(days=2)
+    response = as_user(admin_user).post(
         reverse("bookings:series-list"),
         {
             "title": "Brætspilscafé",
@@ -444,13 +602,13 @@ def test_creating_a_series_returns_its_occurrences(resident):
     assert Event.objects.count() == 3
 
 
-def test_a_clashing_series_leaves_nothing_behind(resident, neighbour):
+def test_a_clashing_series_leaves_nothing_behind(admin_user, neighbour):
     """The whole series is rolled back — half a series is worse than none."""
     start = timezone.now() + timedelta(days=2)
     make_event(neighbour, days_ahead=29)  # sits on the second occurrence's week
 
     clash = Event.objects.get()
-    response = as_user(resident).post(
+    response = as_user(admin_user).post(
         reverse("bookings:series-list"),
         {
             "title": "Brætspilscafé",

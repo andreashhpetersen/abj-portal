@@ -70,6 +70,7 @@ class UserSerializer(serializers.ModelSerializer):
     # to write against a key that is always present and sometimes null.
     resident = serializers.SerializerMethodField()
     is_business_committee = serializers.BooleanField(read_only=True)
+    is_event_organizer = serializers.BooleanField(read_only=True)
 
     def get_resident(self, obj) -> dict | None:
         return ResidentSerializer(obj.resident).data if obj.is_resident else None
@@ -84,9 +85,17 @@ class UserSerializer(serializers.ModelSerializer):
             "phone",
             "is_staff",
             "is_business_committee",
+            "is_event_organizer",
             "resident",
         ]
-        read_only_fields = ["id", "email", "is_staff", "is_business_committee", "resident"]
+        read_only_fields = [
+            "id",
+            "email",
+            "is_staff",
+            "is_business_committee",
+            "is_event_organizer",
+            "resident",
+        ]
 
 
 class LoginSerializer(serializers.Serializer):

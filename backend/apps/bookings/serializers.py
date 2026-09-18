@@ -10,6 +10,7 @@ DRF would return a 500 where the client deserves a field-level 400.
 import copy
 from datetime import timedelta
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -18,6 +19,8 @@ from rest_framework import serializers
 from apps.accounts.serializers import ContactSerializer
 
 from .models import BookingSettings, Event, EventCategory, EventSeries
+
+User = get_user_model()
 
 
 def run_model_validation(instance):
@@ -30,6 +33,16 @@ def run_model_validation(instance):
 
 class EventSerializer(serializers.ModelSerializer):
     created_by = ContactSerializer(read_only=True)
+    # Same trick as shoprentals' `assignee`/`assignee_id`: a different field
+    # name so both the read-only nested contact and this write-only id can
+    # target `created_by`. Only a privileged booker may actually use it to
+    # name someone other than themselves — see `validate()`.
+    organizer_id = serializers.PrimaryKeyRelatedField(
+        source="created_by",
+        queryset=User.objects.filter(is_active=True),
+        write_only=True,
+        required=False,
+    )
     is_cancelled = serializers.BooleanField(read_only=True)
     attendee_count = serializers.SerializerMethodField()
     is_attending = serializers.SerializerMethodField()
@@ -46,6 +59,7 @@ class EventSerializer(serializers.ModelSerializer):
             "start",
             "end",
             "created_by",
+            "organizer_id",
             "series",
             "is_cancelled",
             "cancelled_at",
@@ -89,14 +103,46 @@ class EventSerializer(serializers.ModelSerializer):
                 {"detail": "En aflyst booking kan ikke ændres. Lav en ny booking i stedet."}
             )
 
-        # Build the instance the write would produce and validate that, so the
-        # model's rules — overlap, horizon, title — become 400s with field names.
-        if self.instance is None:
-            candidate = Event(**attrs, created_by=self.context["request"].user)
-        else:
+        if self.instance is not None:
+            # The organizer is who `can_edit`/`can_cancel` and the contact
+            # details resolve against, so reassigning it after the fact is not
+            # an edit like the others — it would hand off a booking mid-edit.
+            if "created_by" in attrs:
+                raise serializers.ValidationError(
+                    {"organizer_id": "Arrangøren kan ikke ændres efter oprettelsen."}
+                )
             candidate = copy.deepcopy(self.instance)
             for field, value in attrs.items():
                 setattr(candidate, field, value)
+            run_model_validation(candidate)
+            return attrs
+
+        user = self.context["request"].user
+        organizer = attrs.get("created_by") or user
+        privileged = user.is_staff or user.is_event_organizer
+
+        if organizer != user and not privileged:
+            raise serializers.ValidationError(
+                {"organizer_id": "Kun arrangementsudvalget kan booke på en andens vegne."}
+            )
+        if (
+            attrs.get("category") == EventCategory.PUBLIC
+            and not privileged
+            and not BookingSettings.load().public_bookings_open
+        ):
+            raise serializers.ValidationError(
+                {
+                    "category": (
+                        "Fælles arrangementer kan i øjeblikket kun oprettes af "
+                        "arrangementsudvalget."
+                    )
+                }
+            )
+        attrs["created_by"] = organizer
+
+        # Build the instance the write would produce and validate that, so the
+        # model's rules — overlap, horizon, title — become 400s with field names.
+        candidate = Event(**attrs)
         run_model_validation(candidate)
         return attrs
 
@@ -105,6 +151,12 @@ class EventSeriesSerializer(serializers.ModelSerializer):
     """Creating a series also creates its occurrences, in one transaction."""
 
     created_by = ContactSerializer(read_only=True)
+    organizer_id = serializers.PrimaryKeyRelatedField(
+        source="created_by",
+        queryset=User.objects.filter(is_active=True),
+        write_only=True,
+        required=False,
+    )
     start = serializers.DateTimeField(write_only=True)
     end = serializers.DateTimeField(write_only=True)
     occurrences = EventSerializer(many=True, read_only=True)
@@ -119,6 +171,7 @@ class EventSeriesSerializer(serializers.ModelSerializer):
             "interval",
             "until",
             "created_by",
+            "organizer_id",
             "created_at",
             "start",
             "end",
@@ -131,6 +184,26 @@ class EventSeriesSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"end": "The event must end after it starts."})
         if attrs["until"] < attrs["start"].date():
             raise serializers.ValidationError({"until": "The series ends before it begins."})
+
+        # A series is always public, so it is governed by the same policy as a
+        # one-off public event — see `EventSerializer.validate()`.
+        user = self.context["request"].user
+        organizer = attrs.get("created_by") or user
+        privileged = user.is_staff or user.is_event_organizer
+        if organizer != user and not privileged:
+            raise serializers.ValidationError(
+                {"organizer_id": "Kun arrangementsudvalget kan booke på en andens vegne."}
+            )
+        if not privileged and not BookingSettings.load().public_bookings_open:
+            raise serializers.ValidationError(
+                {
+                    "detail": (
+                        "Gentagne arrangementer kan i øjeblikket kun oprettes af "
+                        "arrangementsudvalget."
+                    )
+                }
+            )
+        attrs["created_by"] = organizer
         return attrs
 
     def create(self, validated_data):
@@ -141,7 +214,6 @@ class EventSeriesSerializer(serializers.ModelSerializer):
         # half its evenings booked is worse than no series at all.
         with transaction.atomic():
             series = EventSeries.objects.create(
-                created_by=self.context["request"].user,
                 # Remember the pattern's origin. Occurrences can be moved one at
                 # a time, so they cannot be trusted to say where it began.
                 seed_start=start,
@@ -254,6 +326,7 @@ class BookingSettingsSerializer(serializers.ModelSerializer):
             "private_booking_min_notice_days",
             "private_booking_max_horizon_days",
             "private_booking_weekdays",
+            "public_bookings_open",
         ]
 
     def validate(self, attrs):
