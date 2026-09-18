@@ -23,7 +23,7 @@ const FREQUENCY_LABELS: Record<Frequency, string> = {
 
 const PUBLIC_CLOSED_HINT =
   'Fælles arrangementer kan i øjeblikket kun oprettes af beboerlokalegruppen. ' +
-  'Har du en idé til et arrangement, så kontakt dem på beboerlokale@ab-jaeger.dk.'
+  'Har du en idé til et arrangement, så tøv ikke med at kontakte os på beboerlokale@ab-jaeger.dk.'
 
 export function BookingForm({ day, policy, onCreated }: Props) {
   const { member } = useAuth()
