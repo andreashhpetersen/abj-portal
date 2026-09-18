@@ -209,6 +209,10 @@ button {
   transition: background-color 0.15s ease;
 }
 
+/* This reaches every button, including the ones that reset the filled style
+   at rest — `:not(:disabled)` makes it one specificity step stronger than a
+   plain `.class:hover`. See "hovering a quiet button" at the end of the
+   file, which is where that is dealt with. */
 button:hover:not(:disabled) {
   background: var(--color-accent-dark);
 }
@@ -1062,4 +1066,66 @@ select {
   background: transparent;
   color: var(--color-error);
   font-size: 0.75rem;
+}
+
+/* --- hovering a quiet button ---------------------------------------------
+
+   A button that is not filled — a day in the grid, a tab, a row in the event
+   list — resets `background` and `color` at rest. On hover it could not:
+   `button:hover:not(:disabled)` is 0-2-1 and a plain `.thing:hover` is
+   0-2-0, so the accent came back and the text stayed where it was. Dark on
+   dark, and today's date, being accent-coloured itself, disappeared
+   altogether.
+
+   The fill stays — it is the same feedback the filled buttons give — and the
+   text is brought up to meet it. Every descendant that sets a colour of its
+   own has to be named, because the fill lands on the button and a colour
+   that was set explicitly does not inherit. Text that is muted at rest stays
+   muted relative to its neighbours rather than turning the same white as the
+   title.
+
+   Anything written `:hover:not(:disabled)` outranks the generic rule.
+   `.button--quiet` was always written that way, which is why it was the one
+   quiet button that never broke. */
+
+.calendar__day:hover:not(:disabled),
+.calendar__day--outside:hover:not(:disabled),
+.calendar__nav:hover:not(:disabled),
+.event-list__summary:hover:not(:disabled),
+.application-row:hover:not(:disabled),
+.tab:hover:not(:disabled),
+.chip:hover:not(:disabled) {
+  color: #fff;
+}
+
+.calendar__day:hover .calendar__date,
+.event-list__summary:hover .event-list__marker {
+  color: #fff;
+}
+
+.event-list__summary:hover .event-list__when,
+.application-row:hover .application-row__summary,
+.application-row:hover .application-row__meta {
+  color: rgb(255 255 255 / 78%);
+}
+
+/* The public dot is the accent, which against the accent's own dark weight
+   is barely there. The private one is brick and stays legible as it is, so
+   the two remain tellable apart. */
+.calendar__day:hover .dot--public {
+  background: #fff;
+}
+
+/* A star and a delete link are too small to carry a fill — filling them puts
+   a blue tile behind a single glyph. They answer the pointer in their own
+   colour instead. */
+.star:hover:not(:disabled) {
+  background: transparent;
+  color: #c9962b;
+}
+
+.comment__delete:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-error);
+  text-decoration: underline;
 }
