@@ -41,6 +41,17 @@ export interface BookingPolicy {
   private_booking_max_horizon_days: number
   /** Weekdays a private booking may start on. 0 = Monday. */
   private_booking_weekdays: number[]
+  /** When false, only the beboerlokalegruppe and admins may create a public
+   *  booking. Booking one in someone else's name stays restricted to them
+   *  either way. */
+  public_bookings_open: boolean
+}
+
+/** Someone a privileged booker can name as the organizer of a public event. */
+export interface OrganizerCandidate {
+  id: number
+  name: string
+  email: string
 }
 
 export interface NewBooking {
@@ -49,6 +60,9 @@ export interface NewBooking {
   description?: string
   start: string
   end: string
+  /** Only honoured for a privileged booker naming someone other than
+   *  themselves — the server ignores it otherwise. */
+  organizer_id?: number
 }
 
 /** What an edit may change. The category is not among them: a private booking
@@ -98,6 +112,9 @@ export interface NewSeries {
   until: string
   start: string
   end: string
+  /** Only honoured for a privileged booker naming someone other than
+   *  themselves — the server ignores it otherwise. */
+  organizer_id?: number
 }
 
 export const bookings = {
@@ -115,4 +132,7 @@ export const bookings = {
   updateSeries: (id: number, changes: SeriesChanges) =>
     api.patch<EventSeriesDetail>(`/bookings/series/${id}/`, changes),
   policy: () => api.get<BookingPolicy>('/bookings/settings/'),
+  /** Who a privileged booker may name as the organizer of a public event.
+   *  403s for anyone else — the form only calls it once it knows. */
+  organizers: () => api.get<OrganizerCandidate[]>('/bookings/organizers/'),
 }

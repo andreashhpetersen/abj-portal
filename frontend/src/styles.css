@@ -672,6 +672,35 @@ select {
   color: var(--color-error);
 }
 
+/* A narrow, instant tooltip — unlike the native `title`, which has a
+   browser-fixed delay and sizes its box to the content on one line. No
+   transition, so :hover shows and hides it immediately. */
+.tooltip {
+  position: relative;
+}
+
+.tooltip__bubble {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 10;
+  width: 180px;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+}
+
+.tooltip:hover .tooltip__bubble {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* --- shop rentals (erhvervslejemål) -------------------------------------- */
 
 /* The same master-detail shape as the calendar: skim many, work on one. The

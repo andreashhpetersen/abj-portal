@@ -47,6 +47,9 @@ export interface Member {
   phone: string
   is_staff: boolean
   is_business_committee: boolean
+  /** May create a public booking while it is restricted, and book one in
+   *  someone else's name — see `BookingPolicy.public_bookings_open`. */
+  is_event_organizer: boolean
   /** Null for users who are not residents — employees, third-party managers. */
   resident: Resident | null
 }

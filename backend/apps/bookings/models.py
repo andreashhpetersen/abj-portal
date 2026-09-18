@@ -60,6 +60,13 @@ class BookingSettings(models.Model):
     A private booking must be made **at least** `min_notice` days ahead — it is
     a notice period, so neighbours know the room is spoken for — and no more
     than `max_horizon` days ahead, so the calendar cannot be blocked a year out.
+
+    `public_bookings_open` gates who may create a public event rather than when
+    — unlike the private-booking fields above, so it is checked in
+    `EventSerializer.validate()`, not `Event.clean()`. The model only ever sees
+    the organizer a booking ends up with, never who submitted the request, and
+    the rule needs both: a resident may still be handed the room by the
+    beboerlokalegruppe while this is off.
     """
 
     private_bookings_enabled = models.BooleanField(
@@ -81,6 +88,15 @@ class BookingSettings(models.Model):
         _("private booking weekdays"),
         default=all_weekdays,
         help_text=_("Weekdays a private booking may start on. 0 = Monday, 6 = Sunday."),
+    )
+    public_bookings_open = models.BooleanField(
+        _("public bookings open to everyone"),
+        default=False,
+        help_text=_(
+            "When off, only the beboerlokalegruppe and admins may create a public "
+            "booking. Booking one in someone else's name stays restricted to them "
+            "even once this is turned on."
+        ),
     )
 
     class Meta:

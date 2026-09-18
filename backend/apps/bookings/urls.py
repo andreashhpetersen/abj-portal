@@ -11,5 +11,6 @@ router.register("series", views.EventSeriesViewSet, basename="series")
 
 urlpatterns = [
     path("settings/", views.BookingSettingsView.as_view(), name="settings"),
+    path("organizers/", views.EventOrganizerCandidatesView.as_view(), name="organizers"),
     path("", include(router.urls)),
 ]
