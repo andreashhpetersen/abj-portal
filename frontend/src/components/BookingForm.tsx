@@ -21,6 +21,10 @@ const FREQUENCY_LABELS: Record<Frequency, string> = {
   monthly: 'Hver måned',
 }
 
+const PUBLIC_CLOSED_HINT =
+  'Fælles arrangementer kan i øjeblikket kun oprettes af beboerlokalegruppen. ' +
+  'Har du en idé til et arrangement, så kontakt dem på beboerlokale@ab-jaeger.dk.'
+
 export function BookingForm({ day, policy, onCreated }: Props) {
   const { member } = useAuth()
   const [category, setCategory] = useState<EventCategory>('private')
@@ -132,7 +136,10 @@ export function BookingForm({ day, policy, onCreated }: Props) {
           />
           Privat
         </label>
-        <label>
+        {/* The title sits on the label, not the disabled input: a disabled
+            control does not reliably fire hover events, so it would never
+            show its tooltip. */}
+        <label title={publicClosed ? PUBLIC_CLOSED_HINT : undefined}>
           <input
             type="radio"
             name="category"
@@ -152,11 +159,6 @@ export function BookingForm({ day, policy, onCreated }: Props) {
         <p className="hint">
           Private bookinger skal laves mindst {policy.private_booking_min_notice_days} og højst{' '}
           {policy.private_booking_max_horizon_days} dage frem.
-        </p>
-      )}
-      {publicClosed && (
-        <p className="hint">
-          Fælles arrangementer kan i øjeblikket kun oprettes af beboerlokalegruppen.
         </p>
       )}
       {errors.category && <p className="error">{errors.category}</p>}
