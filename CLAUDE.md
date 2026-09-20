@@ -188,6 +188,26 @@ a board member, never from the form. The claimed number is deliberately not
 format-validated either — the register either recognises it or a board member
 reads it, and rejecting a mistyped digit teaches the applicant nothing.
 
+**A claim the register refuses can still be approved against a row chosen by
+hand.** *Brugeranmodninger → Godkend, og knyt til en række i beboerregistret*
+opens one request on a page that searches the eligible entries and links the
+account to the one a board member picks: `register.link_and_approve`, the
+counterpart of `auto_approve` for every case it refuses — a mistyped number, a
+number reaching two units, a flat the export has not caught up with. It exists
+because `SignupRequest.approve()` on its own only activates the account, and
+since nothing in the portal gates on residency, an approval with no address is
+invisible until months later, when a booking cannot be placed in a flat.
+
+Three things about it are load-bearing. The claimed number is never corrected
+in place — it is the thing that was checked — so what the account was actually
+linked to goes into `review_note` instead, which is the only record that
+anything was corrected at all. Only *eligible* entries can be chosen, because a
+shop or somebody who has moved out is not a typo; a residency that genuinely
+has to go outside the rule is typed on the user, where it is visibly a person's
+decision rather than a match. And it is one request at a time: there is no bulk
+version of recognising somebody, so a selection of five is refused rather than
+looped over.
+
 **The signup page is for residents, so the resident number is required**
 (`phone` is the only optional field). Someone with no number to give is an
 employee or a third-party manager, and the board creates those accounts in the

@@ -1,13 +1,15 @@
 from django.contrib import admin, messages
+from django.contrib.admin.utils import unquote
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.core.exceptions import PermissionDenied
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
 
 from .emails import send_signup_approved_email
-from .forms import RegisterUploadForm
+from .forms import LinkRegisterEntryForm, RegisterUploadForm
 from .models import (
     Building,
     RegisterEntry,
@@ -18,10 +20,12 @@ from .models import (
 )
 from .register import (
     INFO,
+    MAX_SEARCH_RESULTS,
     SUCCESS,
     WARNING,
     dry_run_notes,
     header_notes,
+    link_and_approve,
     match_claim,
     outcome_notes,
     parse_rows,
@@ -134,7 +138,7 @@ class SignupRequestAdmin(admin.ModelAdmin):
     list_filter = ["status", "created_at"]
     search_fields = ["email", "claimed_address", "claimed_resident_number"]
     date_hierarchy = "created_at"
-    actions = ["approve_selected", "reject_selected"]
+    actions = ["approve_selected", "link_selected_to_register", "reject_selected"]
     readonly_fields = [
         "email",
         "user",
@@ -216,6 +220,29 @@ class SignupRequestAdmin(admin.ModelAdmin):
     def approve_selected(self, request, queryset):
         self._apply(request, queryset, "approve")
 
+    @admin.action(description=_("Godkend, og knyt til en række i beboerregistret"))
+    def link_selected_to_register(self, request, queryset):
+        """Take one request to a page where its register entry is chosen by hand.
+
+        One at a time, unlike the other two actions, because the whole content
+        of this decision is somebody looking at a particular claim and deciding
+        which row it was meant to be. There is no bulk version of that
+        judgement, so a selection of five is a mistake worth saying out loud
+        rather than a loop to run.
+        """
+        pending = list(queryset.filter(status=SignupRequestStatus.PENDING)[:2])
+        if len(pending) != 1:
+            self.message_user(
+                request,
+                _(
+                    "Vælg netop én anmodning, der afventer godkendelse: "
+                    "beboeren i registret vælges i hånden, én ad gangen."
+                ),
+                messages.WARNING,
+            )
+            return None
+        return redirect(reverse("admin:accounts_signuprequest_link", args=[pending[0].pk]))
+
     @admin.action(description=_("Afvis valgte anmodninger og slet kontoen"))
     def reject_selected(self, request, queryset):
         self._apply(request, queryset, "reject")
@@ -257,6 +284,117 @@ class SignupRequestAdmin(admin.ModelAdmin):
                 % skipped,
                 messages.WARNING,
             )
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/link/",
+                self.admin_site.admin_view(self.link_view),
+                name="accounts_signuprequest_link",
+            ),
+            *super().get_urls(),
+        ]
+
+    def link_view(self, request, object_id):
+        """Approve one claim against a register entry a board member picks.
+
+        This is the answer to a resident who typed their number wrong. The
+        register refuses the claim, correctly — `match_claim` never guesses —
+        and a board member who recognises the name approves it anyway. Doing
+        that with the plain approve action activates an account with no address
+        at all, which nothing in the portal complains about and which surfaces
+        months later as a booking nobody can place in a flat. Here the two
+        halves happen together, and the note records that the number the
+        applicant gave was not the one they were linked to.
+
+        The claim stays on the page, read-only, above the search: what is being
+        checked has to remain visible while the checking happens. That is the
+        same discipline as the changelist — the applicant owns their words, the
+        board owns the decision — and the reason the number is never corrected
+        in place.
+
+        Two submit buttons, and "Søg" is first so a return key pressed in the
+        search box searches rather than approving whatever radio button
+        happened to be selected.
+        """
+        signup_request = self.get_object(request, unquote(str(object_id)))
+        if signup_request is None:
+            raise Http404(_("Anmodningen findes ikke."))
+        if not self.has_change_permission(request, signup_request):
+            raise PermissionDenied
+        changelist = reverse("admin:accounts_signuprequest_changelist")
+        if not signup_request.is_pending or signup_request.user is None:
+            self.message_user(
+                request,
+                _("Anmodningen er allerede behandlet og kan ikke knyttes til registret."),
+                messages.WARNING,
+            )
+            return redirect(changelist)
+
+        confirming = "confirm" in request.POST
+        form = LinkRegisterEntryForm(
+            request.POST or None,
+            confirming=confirming,
+            initial={"query": self._default_query(signup_request)},
+        )
+        if confirming and form.is_valid():
+            resident = link_and_approve(
+                signup_request,
+                form.cleaned_data["entry"],
+                by=request.user,
+                note=form.cleaned_data["note"],
+            )
+            if resident is None:
+                # `attach_residency` refusing means the entry has no building,
+                # which `mark_eligibility` should have made impossible. Saying
+                # so beats approving an account with no address after all.
+                self.message_user(
+                    request,
+                    _(
+                        "Rækken i registret har ingen adresse, portalen kan læse, så der "
+                        "blev ikke knyttet noget. Opret boligen på brugeren i stedet."
+                    ),
+                    messages.WARNING,
+                )
+            else:
+                # The same mail as a plain approval: from the applicant's side
+                # nothing unusual happened, and nothing should say otherwise.
+                send_signup_approved_email(signup_request, request)
+                self.message_user(
+                    request,
+                    _("%(email)s er godkendt og knyttet til %(address)s.")
+                    % {"email": signup_request.email, "address": resident.address},
+                    messages.SUCCESS,
+                )
+                return redirect(changelist)
+
+        return render(
+            request,
+            "admin/accounts/signuprequest/link.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": _("Godkend og knyt til beboerregistret"),
+                "opts": self.model._meta,
+                "signup_request": signup_request,
+                "register_match": self.register_match(signup_request),
+                "form": form,
+                "max_results": MAX_SEARCH_RESULTS,
+            },
+        )
+
+    @staticmethod
+    def _default_query(signup_request):
+        """What to have searched for before the board member types anything.
+
+        The name on the provisional account, because the register has names and
+        the claimed number is — by the time anybody is on this page — known not
+        to resolve. The claimed address is deliberately not used: it is free
+        text with floors and doors in it, and every word has to match, so
+        "Jægersborggade 5, 1. tv." would find nothing and look like an empty
+        register rather than a query worth editing.
+        """
+        user = signup_request.user
+        return user.get_full_name() if user is not None else ""
 
 
 @admin.register(RegisterEntry)
