@@ -714,6 +714,48 @@ def match_claim(number, email=""):
     return RegisterMatch(entry=chosen or entries[0], entries=entries)
 
 
+#: How many register entries the linking page offers at once. A board member
+#: looking for one person gets a handful; anybody who has typed something too
+#: broad is told so, rather than handed six hundred radio buttons.
+MAX_SEARCH_RESULTS = 25
+
+
+def search_eligible(query):
+    """Eligible register entries matching a board member's free-text search.
+
+    For the case the register cannot decide: the claimed number resolves to
+    nothing and a human has to find the row it was meant to be. So the search
+    covers what a board member can read off a rent statement or an email
+    signature — names, the address as INNA wrote it, either number — and every
+    term has to match, which is what makes "holm jægersborggade" narrow the
+    result rather than widen it.
+
+    Only eligible entries, deliberately. Linking an account to a shop or to
+    somebody who has moved out is not a correction of a typo, it is the thing
+    the register exists to prevent; a residency that genuinely has to go
+    outside the rule is typed on the user, where it is visibly somebody's
+    decision rather than a match.
+
+    An empty query returns nothing rather than everything.
+    """
+    if not query or not query.strip():
+        return RegisterEntry.objects.none()
+    entries = RegisterEntry.objects.eligible().select_related("building")
+    for term in query.split():
+        matches = (
+            Q(first_name__icontains=term)
+            | Q(last_name__icontains=term)
+            | Q(alias__icontains=term)
+            | Q(email__icontains=term)
+            | Q(raw_address__icontains=term)
+        )
+        number = normalise_number(term)
+        if number:
+            matches |= Q(unit_number__contains=number) | Q(resident_number__contains=number)
+        entries = entries.filter(matches)
+    return entries.order_by("unit_number", "name_key")
+
+
 #: Written into `SignupRequest.review_note` when the register decided instead of
 #: a person, so the board's queue does not look as though somebody approved it
 #: and forgot to say who.
@@ -767,6 +809,63 @@ def auto_approve(signup_request):
         }
     )
     return resident
+
+
+#: Written into `SignupRequest.review_note` when a board member approved a claim
+#: the register had refused, and said which entry they meant instead. It records
+#: the discrepancy on purpose: the claimed number stays exactly as the applicant
+#: typed it, because that is the thing that was checked — so without this line
+#: the facts that it was wrong, and what it was taken to mean, would exist
+#: nowhere at all.
+LINKED_NOTE = _(
+    "Godkendt af %(reviewer)s og knyttet til %(name)s, %(address)s "
+    "(bolignr. %(unit)s) i beboerregistret. Ansøgeren oplyste »%(claimed)s«."
+)
+
+
+@transaction.atomic
+def link_and_approve(signup_request, entry, *, by=None, note=""):
+    """Approve a pending signup against a register entry chosen by hand.
+
+    The counterpart of `auto_approve` for every case it refuses — a mistyped
+    number, a number that reaches two units, a flat the export has not caught
+    up with. The same two things happen: a residency is attached and the
+    account is activated. What differs is where the entry came from, and that
+    is the whole of it — nothing was matched, so somebody took responsibility
+    instead, and `LINKED_NOTE` says who.
+
+    Attaching the residency is not a nicety. `SignupRequest.approve()` on its
+    own activates an account with no address at all, and since nothing in the
+    portal gates on residency, the omission surfaces months later as a booking
+    nobody can place in a flat.
+
+    Atomic, because a residency attached to an account that then failed to
+    activate is a state nobody would think to look for.
+
+    Returns the `Resident` row, or None if there was nothing to do: a request
+    already decided, an account already deleted, or an entry whose address
+    could not be read.
+    """
+    if not signup_request.is_pending or signup_request.user is None:
+        return None
+    resident = attach_residency(signup_request.user, entry)
+    if resident is None:
+        return None
+    signup_request.approve(by=by, note=_linked_note(signup_request, entry, by=by, note=note))
+    return resident
+
+
+def _linked_note(signup_request, entry, *, by, note):
+    """The generated sentence, with whatever the board member added below it."""
+    sentence = str(LINKED_NOTE) % {
+        "reviewer": (by.get_full_name() or by.email) if by is not None else _("bestyrelsen"),
+        "name": entry.full_name or entry.alias or entry.name_key,
+        "address": entry.address or entry.raw_address,
+        "unit": entry.unit_number,
+        "claimed": signup_request.claimed_resident_number or _("intet nummer"),
+    }
+    written = (note or "").strip()
+    return f"{sentence}\n\n{written}" if written else sentence
 
 
 def pending_requests_to_approve():

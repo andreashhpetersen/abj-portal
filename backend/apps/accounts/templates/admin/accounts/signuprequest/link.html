@@ -1,0 +1,79 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{# Approving a claim the register could not resolve, against a row chosen by
+   hand. The claim sits above the search and stays there: the point of the page
+   is comparing the two, and a board member who has scrolled the applicant's
+   words off the screen is choosing from memory. #}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate "Hjem" %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='accounts' %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url 'admin:accounts_signuprequest_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; {{ title }}
+  </div>
+{% endblock %}
+
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  <div class="module" style="max-width:52em;margin-bottom:1.5em">
+    <h2>{% translate "Ansøgerens oplysninger" %}</h2>
+    <div style="padding:0 1em 1em">
+      <p><strong>{% translate "E-mail" %}:</strong> {{ signup_request.email }}</p>
+      <p><strong>{% translate "Navn" %}:</strong>
+        {% if signup_request.user %}{{ signup_request.user.get_full_name|default:"—" }}{% else %}—{% endif %}</p>
+      <p><strong>{% translate "Oplyst adresse" %}:</strong> {{ signup_request.claimed_address|default:"—" }}</p>
+      <p><strong>{% translate "Oplyst beboernummer" %}:</strong> {{ signup_request.claimed_resident_number|default:"—" }}</p>
+      <p><strong>{% translate "Match i registret" %}:</strong> {{ register_match }}</p>
+    </div>
+  </div>
+
+  <p class="help" style="max-width:52em">
+    {% blocktranslate trimmed %}
+      Registret kunne ikke genkende det oplyste nummer, så kontoen blev ikke
+      aktiveret automatisk. Find personen nedenfor, hvis du genkender
+      ansøgeren: kontoen bliver aktiveret og får samtidig den bolig, rækken i
+      registret peger på.
+    {% endblocktranslate %}
+  </p>
+  <p class="help" style="max-width:52em">
+    {% blocktranslate trimmed %}
+      Det oplyste nummer bliver stående, som ansøgeren skrev det — det er dét,
+      der blev kontrolleret. Hvad kontoen blev knyttet til, skrives i
+      bemærkningen, så forskellen kan læses bagefter.
+    {% endblocktranslate %}
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      {{ form.as_div }}
+    </fieldset>
+
+    {% if form.truncated %}
+      <p class="help" style="max-width:52em">
+        {% blocktranslate trimmed with count=max_results %}
+          Der er flere end {{ count }} træffere. Kun de første vises — søg mere
+          præcist, hvis personen ikke er iblandt dem.
+        {% endblocktranslate %}
+      </p>
+    {% elif form.is_bound and form.result_count == 0 %}
+      <p class="help" style="max-width:52em">
+        {% blocktranslate trimmed %}
+          Ingen træffere. Kun beboere, der må oprette en konto, kan vælges — en
+          erhvervslejer eller en fraflyttet står ikke iblandt dem.
+        {% endblocktranslate %}
+      </p>
+    {% endif %}
+
+    <div class="submit-row">
+      <input type="submit" name="search" value="{% translate 'Søg' %}">
+      <input type="submit" name="confirm" class="default" value="{% translate 'Godkend og knyt kontoen' %}">
+      <a href="{% url 'admin:accounts_signuprequest_changelist' %}" class="closelink">
+        {% translate "Tilbage til anmodningerne" %}
+      </a>
+    </div>
+  </form>
+{% endblock %}
