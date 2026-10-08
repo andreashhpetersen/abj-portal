@@ -126,6 +126,11 @@ DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="beboerportal@loca
 # Error mail to the admins uses this instead of DEFAULT_FROM_EMAIL.
 SERVER_EMAIL = env("DJANGO_SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
+# The portal's own address, for mail that no request triggers (the booking
+# reminders run from a timer) and so cannot learn it from the Host header.
+# Blank is allowed: such mail then goes out without the logo.
+SITE_URL = env("SITE_URL", default="")
+
 # Where a signup the register could not auto-approve gets flagged — otherwise
 # a pending SignupRequest is invisible until a board member happens to open
 # /admin/. Left blank by default, like the shop-rental settings below: a bare

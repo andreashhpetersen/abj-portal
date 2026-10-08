@@ -21,13 +21,14 @@ the ability to edit and delete everything, which is worth little if they cannot
 place a booking on a resident's behalf.
 """
 
+import re
 from datetime import timedelta
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils import timezone
+from django.utils import formats, timezone, translation
 from django.utils.translation import gettext_lazy as _
 
 #: Refuse to materialise an unbounded series. Roughly daily for a year.
@@ -143,6 +144,139 @@ class BookingSettings(models.Model):
     def load(cls):
         settings_row, _created = cls.objects.get_or_create(pk=1)
         return settings_row
+
+
+#: What the reminder says until the board has written something of its own.
+DEFAULT_REMINDER_SUBJECT = "Påmindelse: du har beboerlokalet i morgen"
+DEFAULT_REMINDER_BODY = """Kære nabo!
+
+Du har booket beboerlokalet til dit private arrangement i morgen fra klokken {start} til klokken {slut}.
+Her følger lidt praktiske informationer om brugen af lokalet.
+
+## Generelt
+Du låser dig ind i lokalet vha. den blå vaskebrik. Når du går, skal du huske at lukke vinduerne, tjekke at bagdøren er låst og at slukke alle tændte apparater.
+
+Lokalet må forventes at blive overtaget i brugt stand, men det skal afleveres opryddet og rengjort (se nedenfor). På denne måde sikrer vi, at lokalet jævnligt rengøres.
+
+Som altid skal man udvise respekt for naboerne. Har du et aftenarrangement skal du huske, at der skal være stille kl. 22, og at arrangementet senest skal være slut kl. 00.00. Derudover skal husordenen overholdes (se husordenen her: https://usercontent.one/wp/ab-jaeger.dk/wp-content/uploads/Husorden-AB-Jaeger-maj-2024.pdf)
+
+## Oprydning
+Da vi ikke har rengøringspersonale, lader vi det være op til de private arrangementer at gøre lokalet rent. Derfor skal du efter brug sørge for, at køkkenet, toilettet og gulvet er gjort rent, at opvasken er taget, og at der er blevet smidt skrald ud. Sørg derudover for, at borde og stole er sat tilbage på plads.
+
+## Faciliteter
+Der er internet i lokalet, og koden og netværksnavnet hænger over garderoben. Projektoren kan benyttes ved at tænde den med den store hvide fjernbetjening, og herefter kan du enten bruge Google TV (styres med den lille hvide fjernbetjening), blu-ray-afspilleren eller selv tilslutte en computer via HDMI-stikket i vindueskarmen.
+
+Køkkenet er desværre fortsat under opbygning, og kan derfor ikke bruges, som det er nu.
+
+Til private arrangementer er det ikke tilladt at bruge lokalets kaffe, te og sodavand. Her skal du selv medbringe drikkevarer og mad.
+
+## Valgfri betaling
+Det er gratis at låne lokalet, men det er ikke gratis at drive lokalet. Vi håber derfor, hvis du har råd til det, at du vil betale et valgfrit beløb via MobilePay til nummeret 121714. Det hjælper nemlig med at finansiere indkøb af alt fra toiletpapir til opvaskemiddel, samt elektricitet, varme, vedligehold og så videre - og så kan vi blive ved at holde lokalet gratis og åbent :)
+
+## Kontakt
+Hvis du har spørgsmål, så er du velkommen til at skrive til os på beboerlokale@ab-jaeger.dk.
+
+God fornøjelse med dit arrangement!
+
+Med venlig hilsen
+beboerlokalegruppen
+Sine, Jørn, Fatima, Jonas og Andreas"""  # noqa: E501
+
+#: The words the reminder text may use, and what each stands for.
+REMINDER_PLACEHOLDERS = {
+    "navn": "the booker's first name",
+    "dato": "the day of the booking, e.g. lørdag den 11. oktober",
+    "start": "the start time, e.g. 18:00",
+    "slut": "the finishing time",
+}
+_PLACEHOLDER = re.compile(r"\{(\w*)\}")
+
+
+class BookingReminderEmail(models.Model):
+    """The reminder a private booker gets the morning before their booking.
+
+    A singleton like `BookingSettings`, so the board can reword the mail in the
+    admin without a deploy. The text uses `{navn}`-style placeholders filled in
+    by plain substitution — not the Django template engine, so an editor cannot
+    break the mail with a stray brace or reach into the template context — and
+    `clean()` refuses an unknown word, so a typo fails in the admin and not at
+    ten o'clock the morning somebody is relying on it.
+    """
+
+    enabled = models.BooleanField(
+        _("send reminders"),
+        default=True,
+        help_text=_("When off, no reminders are sent."),
+    )
+    subject = models.CharField(_("subject"), max_length=200, default=DEFAULT_REMINDER_SUBJECT)
+    body = models.TextField(
+        _("text"),
+        default=DEFAULT_REMINDER_BODY,
+        help_text=_(
+            "Placeholders: {navn} (first name), {dato} (the day), {start} and {slut} (times). "
+            "A blank line starts a new paragraph; a paragraph starting with ## is a heading. "
+            "Web addresses become links."
+        ),
+    )
+
+    class Meta:
+        verbose_name = _("booking reminder email")
+        verbose_name_plural = _("booking reminder email")
+
+    def __str__(self):
+        return str(_("Booking reminder email"))
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """The singleton is never deleted — a reminder always has a text."""
+
+    @classmethod
+    def load(cls):
+        reminder, _created = cls.objects.get_or_create(pk=1)
+        return reminder
+
+    def clean(self):
+        errors = {}
+        for field in ("subject", "body"):
+            unknown = sorted(
+                {
+                    word
+                    for word in _PLACEHOLDER.findall(getattr(self, field))
+                    if word not in REMINDER_PLACEHOLDERS
+                }
+            )
+            if unknown:
+                names = ", ".join(f"{{{word}}}" for word in unknown)
+                errors[field] = _("Unknown placeholder: %(names)s.") % {"names": names}
+        if errors:
+            raise ValidationError(errors)
+
+    @staticmethod
+    def values_for(event):
+        """What each placeholder stands for on this booking."""
+        start = timezone.localtime(event.start)
+        end = timezone.localtime(event.end)
+        with translation.override("da"):
+            day = formats.date_format(start, "l \\d\\e\\n j. F")
+        return {
+            "navn": event.created_by.first_name or event.created_by.email,
+            "dato": day,
+            "start": start.strftime("%H:%M"),
+            "slut": end.strftime("%H:%M"),
+        }
+
+    def render(self, event):
+        """The subject and text for this booking, placeholders filled in."""
+        values = self.values_for(event)
+
+        def fill(text):
+            return _PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), text)
+
+        # A subject is one line; a stray newline would be refused by the mailer.
+        return " ".join(fill(self.subject).split()), fill(self.body)
 
 
 class EventSeries(models.Model):
@@ -376,6 +510,11 @@ class Event(models.Model):
         related_name="cancelled_events",
         verbose_name=_("cancelled by"),
     )
+    # Set by `send_booking_reminders` — see there. Not editable: it records that
+    # a mail went out, which nobody should be able to claim or undo by hand.
+    reminder_sent_at = models.DateTimeField(
+        _("reminder sent at"), null=True, blank=True, editable=False
+    )
     created_at = models.DateTimeField(_("created at"), auto_now_add=True)
     updated_at = models.DateTimeField(_("updated at"), auto_now=True)
 
@@ -399,6 +538,10 @@ class Event(models.Model):
         # full_clean(), so without this the API could store an overlapping or
         # out-of-horizon booking that the admin would refuse.
         self.full_clean()
+        # A booking moved to another day is a new date nobody has been reminded
+        # of, so it is owed a reminder again.
+        if self._moved_to_another_day:
+            self.reminder_sent_at = None
         super().save(*args, **kwargs)
 
     @classmethod
@@ -482,6 +625,13 @@ class Event(models.Model):
         """Whether this save gives the booking a start it did not have."""
         placed_as = getattr(self, "_placed_as", None)
         return placed_as is not None and placed_as[1] != self.start
+
+    @property
+    def _moved_to_another_day(self):
+        placed_as = getattr(self, "_placed_as", None)
+        if self._state.adding or placed_as is None or self.start is None:
+            return False
+        return timezone.localdate(placed_as[1]) != timezone.localdate(self.start)
 
     @property
     def _is_being_placed(self):

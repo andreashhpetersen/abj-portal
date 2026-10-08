@@ -25,13 +25,28 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.translation import gettext as _
 
 
-def _send(*, subject, template, context, to, request):
-    """Render and send one message. `request` is only ever used for
-    `build_absolute_uri` — here, for the logo, and in each caller for its own
-    link — so every email resolves against whichever host it was actually
-    triggered from, same as the SPA does.
+def _logo_url(request):
+    """Where the logo lives, as an absolute URL, or "" when that is unknowable.
+
+    Mail sent from a request resolves against the host it was triggered from,
+    same as the SPA does. Mail sent by a timer has no request, so it falls back
+    to `SITE_URL`; with neither, the template leaves the logo out rather than
+    send a broken image.
     """
-    context = {**context, "logo_url": request.build_absolute_uri(static("accounts/logo.png"))}
+    path = static("accounts/logo.png")
+    if request is not None:
+        return request.build_absolute_uri(path)
+    if settings.SITE_URL:
+        return f"{settings.SITE_URL.rstrip('/')}{path}"
+    return ""
+
+
+def _send(*, subject, template, context, to, request=None):
+    """Render and send one message. `request` is used for `build_absolute_uri`
+    — here, for the logo, and in each caller for its own link. It is optional
+    only for mail that no request triggers.
+    """
+    context = {**context, "logo_url": _logo_url(request)}
     text_body = render_to_string(f"accounts/emails/{template}.txt", context)
     html_body = render_to_string(f"accounts/emails/{template}.html", context)
     message = EmailMultiAlternatives(subject=subject, body=text_body, to=[to])
@@ -117,4 +132,47 @@ def send_signup_approved_email(signup_request, request):
         context={"login_link": login_link},
         to=signup_request.email,
         request=request,
+    )
+
+
+def _reminder_blocks(body):
+    """Split the board's text into headings and paragraphs.
+
+    A line starting with `## ` is a heading, and what follows it up to the next
+    blank line is the paragraph under it — the heading needs no blank line of
+    its own, so it cannot swallow the text beneath it.
+    """
+    blocks, lines = [], []
+
+    def flush():
+        if lines:
+            blocks.append({"heading": False, "text": "\n".join(lines)})
+            lines.clear()
+
+    for line in body.splitlines():
+        line = line.strip()
+        if line.startswith("## "):
+            flush()
+            blocks.append({"heading": True, "text": line[3:].strip()})
+        elif line:
+            lines.append(line)
+        else:
+            flush()
+    flush()
+    return blocks
+
+
+def send_booking_reminder_email(event, reminder):
+    """Remind whoever booked the room that their booking is tomorrow.
+
+    The wording is the board's, edited in the admin (`BookingReminderEmail`);
+    this only lays it out in the shared shell. Sent by the
+    `send_booking_reminders` timer, so there is no request to take links from.
+    """
+    subject, body = reminder.render(event)
+    _send(
+        subject=subject,
+        template="booking_reminder",
+        context={"body": body, "blocks": _reminder_blocks(body)},
+        to=event.created_by.email,
     )

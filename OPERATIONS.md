@@ -280,6 +280,64 @@ Compose reads `/opt/abj-portal/.env` itself, so the unit needs no
 Watch it with `journalctl -u abj-sync-applications.service -f`. A failed run
 needs no intervention — the next one re-reads the whole sheet.
 
+## The booking reminder
+
+`manage.py send_booking_reminders` mails everyone with a private booking tomorrow.
+The board edits the wording in the admin (*Bookings → Booking reminder email*), where
+it can also be switched off; the command only decides who gets it and when.
+
+Set `SITE_URL=https://portal.ab-jaeger.dk` in `/opt/abj-portal/.env` — the same
+host as `PORTAL_DOMAIN`, with `https://` in front. A timer
+has no request to learn the host from, so without it the mail goes out without
+the logo — the one thing `SITE_URL` is used for.
+
+Check it before scheduling anything:
+
+```bash
+docker compose run --rm --no-deps app \
+    python manage.py send_booking_reminders --dry-run
+```
+
+That lists who would be mailed tomorrow's reminder and sends and marks nothing.
+Then the timer, daily at ten:
+
+```ini
+# /etc/systemd/system/abj-booking-reminders.service
+[Unit]
+Description=Remind residents of tomorrow's private bookings
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/abj-portal
+ExecStart=/usr/bin/docker compose run --rm --no-deps app \
+    python manage.py send_booking_reminders
+```
+
+```ini
+# /etc/systemd/system/abj-booking-reminders.timer
+[Unit]
+Description=Send booking reminders at 10:00
+
+[Timer]
+OnCalendar=*-*-* 10:00:00 Europe/Copenhagen
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+`systemctl daemon-reload && systemctl enable --now abj-booking-reminders.timer`.
+The zone is written into `OnCalendar` because the host's own clock is probably
+UTC, which would send the mail an hour or two early. `Persistent=true` makes a
+server that was down at ten send on boot — late, but still before the booking.
+
+Every booking is marked as reminded before its mail goes out, so running the
+command twice sends nothing twice; a mail that fails is unmarked again and the
+next run retries it, with the failure in `journalctl -u
+abj-booking-reminders.service`. A booking placed after ten the day before gets no
+reminder.
+
 ## The resident register
 
 `RegisterEntry` is a copy of INNA's resident register, and it is what decides

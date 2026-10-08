@@ -1,0 +1,4 @@
+{% extends "accounts/emails/base.txt" %}
+{% block content %}{% autoescape off %}{% for block in blocks %}{{ block.text }}{% if not forloop.last %}
+
+{% endif %}{% endfor %}{% endautoescape %}{% endblock %}
