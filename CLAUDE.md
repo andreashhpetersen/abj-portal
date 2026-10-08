@@ -332,6 +332,20 @@ title.
 `_clashing_events()` ignores cancelled events. Filter on
 `cancelled_at__isnull=True` when listing live bookings.
 
+**The reminder mail is the board's text, sent once, by a timer.**
+`BookingReminderEmail` is a singleton like `BookingSettings`, edited in the
+admin. Its `{navn}`-style placeholders are filled by plain substitution, not the
+Django template engine, so an editor cannot break the mail with a brace or reach
+into the template context; `clean()` rejects an unknown word so a typo fails in
+the admin rather than the morning somebody relies on it. `send_booking_reminders`
+runs daily at 10:00 from a host systemd timer (`OPERATIONS.md`) and is its own
+idempotency: `Event.reminder_sent_at` is claimed with a filtered `update()`
+before sending — never `save()`, which would run `full_clean()` and the
+past-start check — and released if the send fails. `Event.save()` clears it when
+a booking moves to another day, so the new date is reminded too. A booking
+placed after 10:00 the day before gets no reminder, deliberately. The mail has
+no request to build links from, which is why `SITE_URL` exists.
+
 **One room is assumed.** `Event` has no room FK, and `_clashing_events()` is the
 only place that assumption lives — adding a second bookable space means adding
 the FK and including it in that filter.

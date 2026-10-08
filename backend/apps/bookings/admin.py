@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from .models import BookingSettings, Event, EventAttendance, EventSeries
+from .models import BookingReminderEmail, BookingSettings, Event, EventAttendance, EventSeries
 
 
 class AttendanceInline(admin.TabularInline):
@@ -88,4 +88,21 @@ class BookingSettingsAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         BookingSettings.load()  # make sure the row exists before listing it
+        return super().changelist_view(request, extra_context)
+
+
+@admin.register(BookingReminderEmail)
+class BookingReminderEmailAdmin(admin.ModelAdmin):
+    """Singleton: the text of the reminder sent the morning before a private booking."""
+
+    list_display = ["__str__", "enabled", "subject"]
+
+    def has_add_permission(self, request):
+        return not BookingReminderEmail.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        BookingReminderEmail.load()  # make sure the row exists before listing it
         return super().changelist_view(request, extra_context)

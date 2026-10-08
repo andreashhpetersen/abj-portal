@@ -1,0 +1,9 @@
+{% extends "accounts/emails/base.html" %}
+{% block subject %}Påmindelse om din booking{% endblock %}
+{% block content %}
+{% for block in blocks %}{% if block.heading %}
+<p style="margin:{% if forloop.first %}0{% else %}28px{% endif %} 0 8px;font-size:16px;line-height:1.3;font-weight:600;color:#2c6fad;">{{ block.text }}</p>
+{% else %}
+<p style="margin:0 0 {% if forloop.last %}0{% else %}14px{% endif %};">{{ block.text|urlize|linebreaksbr }}</p>
+{% endif %}{% endfor %}
+{% endblock %}
